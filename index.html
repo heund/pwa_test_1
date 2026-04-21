@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ecebe6">
+  <title>Jeju Map Prototype</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="top-bar glass">
+      <button class="status-card" type="button" aria-label="생명 상태">
+        <strong>5</strong>
+        <span>LIVES</span>
+      </button>
+
+      <div class="life-meter" aria-label="진행 상태">
+        <span class="life-meter__label">FULL OF LIFE</span>
+        <div class="life-meter__hearts" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+
+      <button class="menu-button" type="button" aria-label="메뉴 열기">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </header>
+
+    <main class="map-screen" id="mapScreen">
+      <div class="map-stage" id="mapStage">
+        <svg class="map-svg" id="mapSvg" viewBox="0 0 390 2200" preserveAspectRatio="xMidYMin slice" aria-label="게임 맵">
+          <defs>
+            <linearGradient id="routeGlow" x1="0%" x2="0%" y1="0%" y2="100%">
+              <stop offset="0%" stop-color="#ff8e7a" />
+              <stop offset="100%" stop-color="#f35f62" />
+            </linearGradient>
+            <filter id="softShadow" x="-50%" y="-50%" width="200%" height="200%">
+              <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#23344d" flood-opacity="0.12" />
+            </filter>
+          </defs>
+          <g id="mapLayers"></g>
+          <g id="routeLayer"></g>
+          <g id="nodeLayer"></g>
+        </svg>
+        <div class="particles" id="particles" aria-hidden="true"></div>
+      </div>
+
+      <aside class="info-card glass" id="infoCard">
+        <p class="info-card__eyebrow">현재 지점</p>
+        <h1 class="info-card__title" id="nodeTitle">숨길 45</h1>
+        <p class="info-card__body" id="nodeBody">바람이 낮게 흐르고 나무 그림자가 길게 겹치는 길목.</p>
+      </aside>
+    </main>
+
+    <nav class="bottom-nav glass" aria-label="하단 탐색">
+      <button class="bottom-nav__item" type="button">
+        <span class="bottom-nav__icon">⌁</span>
+        <span>스캔</span>
+      </button>
+      <button class="bottom-nav__item bottom-nav__item--active" type="button">
+        <span class="bottom-nav__icon">◌</span>
+        <span>지도</span>
+      </button>
+      <button class="bottom-nav__item" type="button">
+        <span class="bottom-nav__icon">✦</span>
+        <span>도감</span>
+      </button>
+    </nav>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
