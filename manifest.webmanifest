@@ -2,10 +2,13 @@
   "name": "Jeju Map Prototype",
   "short_name": "Jeju Map",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "background_color": "#f4efde",
   "theme_color": "#ecebe6",
   "lang": "ko",
   "description": "Illustrated game map prototype for the Jeju Biennale PWA.",
+  "orientation": "portrait",
   "icons": []
 }

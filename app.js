@@ -30,6 +30,54 @@ const mapStage = document.getElementById("mapStage");
 
 let activeNodeId = 45;
 
+function isStandaloneMode() {
+  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+}
+
+function registerPwaShell() {
+  document.documentElement.dataset.displayMode = isStandaloneMode() ? "standalone" : "browser";
+
+  const updateViewportHeight = () => {
+    const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    document.documentElement.style.setProperty("--app-height", `${viewportHeight}px`);
+  };
+
+  const minimizeBrowserChrome = () => {
+    if (isStandaloneMode()) return;
+    window.setTimeout(() => {
+      window.scrollTo(0, 1);
+    }, 120);
+  };
+
+  updateViewportHeight();
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", updateViewportHeight);
+  }
+
+  window.addEventListener("resize", updateViewportHeight);
+  window.addEventListener("orientationchange", () => {
+    updateViewportHeight();
+    minimizeBrowserChrome();
+  });
+  window.addEventListener("load", minimizeBrowserChrome);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      updateViewportHeight();
+      minimizeBrowserChrome();
+    }
+  });
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {
+      // Keep the prototype running even if SW registration fails locally.
+    });
+  });
+}
+
 function createSvgElement(tag, attrs = {}) {
   const el = document.createElementNS(svgNS, tag);
   Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, value));
@@ -139,24 +187,6 @@ function addFootprints() {
     append(group, "circle", { cx: -4, cy: -10, r: 3, fill: "#c8c0ab" });
     append(group, "circle", { cx: 3, cy: -11, r: 3, fill: "#c8c0ab" });
     append(group, "circle", { cx: 9, cy: -6, r: 3, fill: "#c8c0ab" });
-  });
-}
-
-function addAccentDashes() {
-  [
-    [336, 974],
-    [336, 1138],
-    [312, 1400]
-  ].forEach(([x, y]) => {
-    append(mapLayers, "rect", {
-      x,
-      y,
-      width: 44,
-      height: 6,
-      rx: 3,
-      fill: "#7fb19f",
-      opacity: "0.95"
-    });
   });
 }
 
@@ -285,13 +315,6 @@ function renderNodes() {
     group.dataset.id = String(node.id);
 
     append(group, "circle", {
-      class: "node-pulse",
-      cx: 0,
-      cy: 0,
-      r: 36
-    });
-
-    append(group, "circle", {
       cx: 0,
       cy: 0,
       r: 28
@@ -342,9 +365,10 @@ function updateParallax() {
 }
 
 function init() {
+  registerPwaShell();
+  registerServiceWorker();
   addBackground();
   addFootprints();
-  addAccentDashes();
   addTrees();
   addWaterFoam();
   addRoute();
