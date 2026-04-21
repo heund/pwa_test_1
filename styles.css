@@ -33,7 +33,8 @@ body {
 }
 
 body {
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 button {
@@ -42,10 +43,10 @@ button {
 
 .app-shell {
   position: relative;
-  height: var(--app-height, 100vh);
+  min-height: var(--app-height, 100vh);
   min-height: 100vh;
   min-height: 100dvh;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .glass {
@@ -161,16 +162,13 @@ button {
 }
 
 .map-screen {
-  position: absolute;
-  inset: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scroll-behavior: smooth;
+  position: relative;
+  overflow: visible;
 }
 
 .map-stage {
   position: relative;
-  min-height: 2200px;
+  height: 2200px;
 }
 
 .map-svg {

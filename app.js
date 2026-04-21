@@ -25,7 +25,6 @@ const mapLayers = document.getElementById("mapLayers");
 const routeLayer = document.getElementById("routeLayer");
 const nodeLayer = document.getElementById("nodeLayer");
 const particles = document.getElementById("particles");
-const mapScreen = document.getElementById("mapScreen");
 const mapStage = document.getElementById("mapStage");
 
 let activeNodeId = 45;
@@ -342,7 +341,7 @@ function setActiveNode(id) {
   renderNodes();
   const target = nodes.find((node) => node.id === id);
   const topOffset = Math.max(target.y - window.innerHeight * 0.48, 0);
-  mapScreen.scrollTo({ top: topOffset, behavior: "smooth" });
+  window.scrollTo({ top: topOffset, behavior: "smooth" });
 }
 
 function createParticles() {
@@ -359,7 +358,7 @@ function createParticles() {
 }
 
 function updateParallax() {
-  const scrollTop = mapScreen.scrollTop;
+  const scrollTop = window.scrollY || window.pageYOffset || 0;
   mapStage.style.setProperty("--parallax-slow", `${scrollTop * -0.02}px`);
   mapStage.style.setProperty("--parallax-fast", `${scrollTop * -0.04}px`);
 }
@@ -378,7 +377,7 @@ function init() {
   setActiveNode(activeNodeId);
 }
 
-mapScreen.addEventListener("scroll", () => {
+window.addEventListener("scroll", () => {
   window.requestAnimationFrame(updateParallax);
 }, { passive: true });
 
