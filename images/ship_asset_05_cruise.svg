@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="340" height="170" viewBox="0 0 340 170" fill="none">
+  <defs>
+    <filter id="s5" x="-20%" y="-20%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="6" stdDeviation="5" flood-color="#6F8FA3" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+  <g filter="url(#s5)">
+    <path d="M41 102 219 87l57 23-32 21-172 11-39-18Z" fill="#F6F1E5"/>
+    <path d="M219 87 276 110l-32 21-25-24Z" fill="#D7E2E8"/>
+    <path d="M33 113 72 131l172-11 32-21-178 13Z" fill="#E8E0D0"/>
+    <path d="M95 71 192 63l29 24-101 9Z" fill="#FBF8F0"/>
+    <path d="M113 54 171 49l21 15-60 5Z" fill="#F8F4EA"/>
+    <path d="M126 44 159 41l12 9-34 3Z" fill="#F7F2E6"/>
+    <path d="M99 101 208 92" stroke="#99AFBC" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M110 113 220 102" stroke="#99AFBC" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M144 51 149 27l4 0-4 24Z" fill="#D7E2E8"/>
+    <path d="M168 49 172 31l4 0-4 19Z" fill="#D7E2E8"/>
+    <path d="M118 78 135 77l2 12-17 1Z" fill="#C5D5DE"/>
+    <path d="M138 76 156 75l1 12-17 2Z" fill="#BAD0DB"/>
+    <path d="M159 75 177 74l1 12-17 2Z" fill="#B0C9D5"/>
+    <path d="M180 73 198 72l1 12-17 2Z" fill="#A8C3D0"/>
+  </g>
+</svg>

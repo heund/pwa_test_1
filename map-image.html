@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ecebe6">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Jeju Map">
+  <title>Jeju Map Image Prototype</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="map-image-page">
+  <div class="app-shell app-shell--image">
+    <main class="map-screen map-screen--image">
+      <div class="map-stage map-stage--image">
+        <img
+          class="map-image"
+          src="images/map_no_cloud.png"
+          alt="제주 게임 맵"
+        >
+        <div class="cloud-layer cloud-layer--bottom" id="bottomCloudLayer" aria-hidden="true"></div>
+        <div class="cloud-layer" id="cloudLayer" aria-hidden="true"></div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const cloudAssets = [
+      "images/cloud_asset_01.svg",
+      "images/cloud_asset_02.svg",
+      "images/cloud_asset_03.svg",
+      "images/cloud_asset_04.svg",
+      "images/cloud_asset_05.svg"
+    ];
+
+    let cloudLayer;
+    let bottomCloudLayer;
+    let cloudTimers = [];
+    let bottomCloudTimers = [];
+    let cloudResizeFrame = 0;
+    const cloudLanes = [0.02, 0.07, 0.11, 0.15];
+    const bottomCloudLanes = [0.78, 0.84, 0.9, 0.95];
+    const cloudMinGap = 110;
+    const bottomCloudMinGap = 90;
+
+    function clearTimers(timerStore) {
+      timerStore.forEach((timer) => window.clearTimeout(timer));
+      timerStore.length = 0;
+    }
+
+    function getActiveCloudRects(layer) {
+      return Array.from(layer ? layer.children : []).map((cloud) => ({
+        left: Number(cloud.dataset.left || 0),
+        width: Number(cloud.dataset.width || 0),
+        lane: Number(cloud.dataset.lane || 0)
+      }));
+    }
+
+    function getViewportCloudRects(layer) {
+      return getActiveCloudRects(layer).filter((cloud) => cloud.left < window.innerWidth && cloud.left + cloud.width > 0);
+    }
+
+    function pickCloudLane(layer, lanes) {
+      const activeLanes = new Set(
+        getActiveCloudRects(layer)
+          .filter((cloud) => cloud.left < window.innerWidth && cloud.left + cloud.width > 0)
+          .map((cloud) => cloud.lane)
+      );
+
+      const availableLanes = lanes.filter((_, index) => !activeLanes.has(index));
+      if (availableLanes.length > 0) {
+        const lane = availableLanes[Math.floor(Math.random() * availableLanes.length)];
+        return { lane, laneIndex: lanes.indexOf(lane) };
+      }
+
+      const laneIndex = Math.floor(Math.random() * lanes.length);
+      return { lane: lanes[laneIndex], laneIndex };
+    }
+
+    function randomCloudSpec(config) {
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const { lane, laneIndex } = pickCloudLane(config.layer, config.lanes);
+      const width = Math.round(viewportWidth * (config.minWidthRatio + Math.random() * config.widthRatioSpread));
+      const height = Math.round(width * 0.56);
+      const laneTop = Math.round(viewportHeight * lane);
+      const topJitter = Math.round((Math.random() - 0.5) * config.topJitter);
+
+      return {
+        src: cloudAssets[Math.floor(Math.random() * cloudAssets.length)],
+        width,
+        height,
+        top: Math.max(12, laneTop + topJitter),
+        laneIndex,
+        opacity: config.minOpacity + Math.random() * config.opacitySpread,
+        duration: config.minDuration + Math.random() * config.durationSpread,
+        floatDuration: config.minFloatDuration + Math.random() * config.floatDurationSpread,
+        floatOffset: config.minFloatOffset + Math.random() * config.floatOffsetSpread
+      };
+    }
+
+    function hasEnoughHorizontalGap(layer, left, width, laneIndex, minGap) {
+      return getViewportCloudRects(layer)
+        .every((cloud) => {
+          const isNearbyLane = Math.abs(cloud.lane - laneIndex) <= 1;
+          const cloudRight = cloud.left + cloud.width;
+          const nextRight = left + width;
+          if (!isNearbyLane) {
+            return true;
+          }
+          return nextRight + minGap < cloud.left || left > cloudRight + minGap;
+        });
+    }
+
+    function findSpawnLeft(layer, width, laneIndex, minGap, options = {}) {
+      const {
+        visible = false,
+        minVisibleRatio = 0.2,
+        maxVisibleRatio = 0.55
+      } = options;
+
+      const viewportWidth = window.innerWidth;
+
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const left = visible
+          ? Math.round(
+              -width * maxVisibleRatio +
+              Math.random() * ((viewportWidth - width * minVisibleRatio) - (-width * maxVisibleRatio))
+            )
+          : -width;
+
+        if (hasEnoughHorizontalGap(layer, left, width, laneIndex, minGap)) {
+          return left;
+        }
+      }
+
+      return visible ? Math.max(24, Math.round(viewportWidth * 0.16)) : -width;
+    }
+
+    function scheduleCloudSpawn(layer, timerStore, spawnFn, delay = 0) {
+      const timer = window.setTimeout(() => {
+        const activeClouds = layer ? layer.childElementCount : 0;
+        const shouldSpawn =
+          activeClouds === 0 ||
+          (activeClouds === 1 && Math.random() < 0.96) ||
+          (activeClouds === 2 && Math.random() < 0.58);
+
+        if (shouldSpawn) {
+          spawnFn();
+        } else {
+          scheduleCloudSpawn(layer, timerStore, spawnFn, 700 + Math.random() * 900);
+        }
+
+        const index = timerStore.indexOf(timer);
+        if (index >= 0) {
+          timerStore.splice(index, 1);
+        }
+      }, delay);
+
+      timerStore.push(timer);
+    }
+
+    function attachCloudLifecycle(cloud, timerStore, layer, spawnFn, respawnMin, respawnSpread) {
+      const handleEnd = () => {
+        cloud.remove();
+        scheduleCloudSpawn(layer, timerStore, spawnFn, respawnMin + Math.random() * respawnSpread);
+      };
+
+      return handleEnd;
+    }
+
+    function placeCloud(cloud, left, top, width, laneIndex) {
+      cloud.style.left = `${left}px`;
+      cloud.style.top = `${top}px`;
+      cloud.style.width = `${width}px`;
+      cloud.dataset.left = String(left);
+      cloud.dataset.width = String(width);
+      cloud.dataset.lane = String(laneIndex);
+    }
+
+    function animateCloud(cloud, startLeft, targetLeft, duration, timerStore, layer, spawnFn, respawnMin, respawnSpread) {
+      const travel = Math.max(targetLeft - startLeft, 0);
+      const onFinish = attachCloudLifecycle(cloud, timerStore, layer, spawnFn, respawnMin, respawnSpread);
+
+      cloud.dataset.left = String(targetLeft);
+
+      const animation = cloud.animate(
+        [
+          { transform: "translateX(0px)" },
+          { transform: `translateX(${travel}px)` }
+        ],
+        {
+          duration: duration * 1000,
+          easing: "linear",
+          fill: "forwards"
+        }
+      );
+
+      animation.addEventListener("finish", onFinish, { once: true });
+    }
+
+    function spawnCloud(layer, timerStore, config, options = {}) {
+      if (!layer || layer.childElementCount >= config.maxClouds) return;
+
+      const spec = randomCloudSpec(config);
+      const cloud = document.createElement("div");
+      const cloudImage = document.createElement("img");
+      const endLeft = window.innerWidth + spec.width;
+      const startLeft = findSpawnLeft(layer, spec.width, spec.laneIndex, config.minGap, options);
+      const remainingDistance = Math.max(endLeft - startLeft, spec.width);
+      const remainingDuration = Math.max(spec.duration * (remainingDistance / (window.innerWidth + spec.width * 2)), 18);
+
+      cloud.className = "cloud";
+      if (config.layerClass) {
+        cloud.classList.add(config.layerClass);
+      }
+      cloud.style.opacity = spec.opacity.toFixed(2);
+      cloud.style.setProperty("--cloud-float-duration", `${spec.floatDuration}s`);
+      cloud.style.setProperty("--cloud-float-offset", `${spec.floatOffset}px`);
+
+      cloudImage.className = "cloud__image";
+      cloudImage.src = spec.src;
+      cloudImage.alt = "";
+
+      cloud.append(cloudImage);
+      placeCloud(cloud, startLeft, spec.top, spec.width, spec.laneIndex);
+
+      layer.append(cloud);
+      animateCloud(
+        cloud,
+        startLeft,
+        endLeft,
+        remainingDuration,
+        timerStore,
+        layer,
+        () => spawnCloud(layer, timerStore, config),
+        config.respawnMin,
+        config.respawnSpread
+      );
+    }
+
+    function createClouds() {
+      const cloudLayerElement = document.getElementById("cloudLayer");
+      const bottomCloudLayerElement = document.getElementById("bottomCloudLayer");
+      if (!cloudLayerElement || !bottomCloudLayerElement) return;
+
+      window.clearTimeout(cloudResizeFrame);
+      clearTimers(cloudTimers);
+      clearTimers(bottomCloudTimers);
+      cloudLayerElement.innerHTML = "";
+      bottomCloudLayerElement.innerHTML = "";
+
+      const topConfig = {
+        layer: cloudLayerElement,
+        lanes: cloudLanes,
+        minWidthRatio: 0.18,
+        widthRatioSpread: 0.1,
+        topJitter: 10,
+        minOpacity: 0.92,
+        opacitySpread: 0.08,
+        minDuration: 52,
+        durationSpread: 30,
+        minFloatDuration: 12,
+        floatDurationSpread: 7,
+        minFloatOffset: 2,
+        floatOffsetSpread: 2,
+        minGap: cloudMinGap,
+        maxClouds: 3,
+        respawnMin: 300,
+        respawnSpread: 700
+      };
+
+      const bottomConfig = {
+        layer: bottomCloudLayerElement,
+        lanes: bottomCloudLanes,
+        minWidthRatio: 0.12,
+        widthRatioSpread: 0.08,
+        topJitter: 12,
+        minOpacity: 0.93,
+        opacitySpread: 0.05,
+        minDuration: 40,
+        durationSpread: 18,
+        minFloatDuration: 11,
+        floatDurationSpread: 6,
+        minFloatOffset: 1.5,
+        floatOffsetSpread: 1.5,
+        minGap: bottomCloudMinGap,
+        maxClouds: 4,
+        respawnMin: 450,
+        respawnSpread: 900,
+        layerClass: "cloud--bottom"
+      };
+
+      spawnCloud(cloudLayerElement, cloudTimers, topConfig, {
+        visible: true,
+        minVisibleRatio: 0.28,
+        maxVisibleRatio: 0.68
+      });
+      spawnCloud(bottomCloudLayerElement, bottomCloudTimers, bottomConfig, {
+        visible: true,
+        minVisibleRatio: 0.18,
+        maxVisibleRatio: 0.46
+      });
+      spawnCloud(bottomCloudLayerElement, bottomCloudTimers, bottomConfig, {
+        visible: true,
+        minVisibleRatio: 0.52,
+        maxVisibleRatio: 0.82
+      });
+      scheduleCloudSpawn(cloudLayerElement, cloudTimers, () => spawnCloud(cloudLayerElement, cloudTimers, topConfig), 900 + Math.random() * 1200);
+      scheduleCloudSpawn(bottomCloudLayerElement, bottomCloudTimers, () => spawnCloud(bottomCloudLayerElement, bottomCloudTimers, bottomConfig), 700 + Math.random() * 900);
+    }
+
+    cloudLayer = document.getElementById("cloudLayer");
+    bottomCloudLayer = document.getElementById("bottomCloudLayer");
+    createClouds();
+    window.addEventListener("resize", () => {
+      if (cloudResizeFrame) {
+        window.clearTimeout(cloudResizeFrame);
+      }
+      cloudResizeFrame = window.setTimeout(createClouds, 180);
+    });
+
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js").catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
