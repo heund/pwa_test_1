@@ -46,6 +46,45 @@
     const cloudMinGap = 110;
     const bottomCloudMinGap = 90;
 
+    function isStandaloneMode() {
+      return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+    }
+
+    function registerPwaShell() {
+      document.documentElement.dataset.displayMode = isStandaloneMode() ? "standalone" : "browser";
+
+      const updateViewportHeight = () => {
+        const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+        document.documentElement.style.setProperty("--app-height", `${viewportHeight}px`);
+      };
+
+      const minimizeBrowserChrome = () => {
+        if (isStandaloneMode()) return;
+        window.setTimeout(() => {
+          window.scrollTo(0, 1);
+        }, 120);
+      };
+
+      updateViewportHeight();
+
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", updateViewportHeight);
+      }
+
+      window.addEventListener("resize", updateViewportHeight);
+      window.addEventListener("orientationchange", () => {
+        updateViewportHeight();
+        minimizeBrowserChrome();
+      });
+      window.addEventListener("load", minimizeBrowserChrome);
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) {
+          updateViewportHeight();
+          minimizeBrowserChrome();
+        }
+      });
+    }
+
     function clearTimers(timerStore) {
       timerStore.forEach((timer) => window.clearTimeout(timer));
       timerStore.length = 0;
@@ -315,6 +354,7 @@
 
     cloudLayer = document.getElementById("cloudLayer");
     bottomCloudLayer = document.getElementById("bottomCloudLayer");
+    registerPwaShell();
     createClouds();
     window.addEventListener("resize", () => {
       if (cloudResizeFrame) {

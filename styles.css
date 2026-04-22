@@ -172,7 +172,7 @@ button {
 }
 
 .map-screen--image {
-  min-height: 100vh;
+  min-height: var(--app-height, 100vh);
   min-height: 100dvh;
 }
 
@@ -183,9 +183,9 @@ button {
 
 .map-stage--image {
   position: relative;
-  height: 100vh;
+  height: var(--app-height, 100vh);
   height: 100dvh;
-  min-height: 100vh;
+  min-height: var(--app-height, 100vh);
   overflow: hidden;
 }
 
@@ -200,7 +200,7 @@ button {
   inset: 0;
   display: block;
   width: 100vw;
-  height: 100vh;
+  height: var(--app-height, 100vh);
   height: 100dvh;
   object-fit: cover;
   object-position: center;
