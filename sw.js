@@ -1,4 +1,4 @@
-const CACHE_NAME = "jeju-map-prototype-v3";
+const CACHE_NAME = "jeju-map-prototype-v4";
 const ASSETS = [
   "./",
   "./index.html",

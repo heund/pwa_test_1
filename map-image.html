@@ -15,7 +15,7 @@
 <body class="map-image-page">
   <div class="app-shell app-shell--image">
     <main class="map-screen map-screen--image">
-      <div class="map-stage map-stage--image">
+      <div class="map-stage map-stage--image" id="mapStage">
         <img
           class="map-image map-image--base"
           src="images/map_no_cloud.svg"
@@ -47,12 +47,20 @@
       "images/cloud_asset_04.svg",
       "images/cloud_asset_05.svg"
     ];
+    const backgroundAudioSrc = "sound/map_background.mp3";
 
+    let mapStage;
     let cloudLayer;
     let bottomCloudLayer;
     let cloudTimers = [];
     let bottomCloudTimers = [];
     let cloudResizeFrame = 0;
+    let audioContext;
+    let audioBuffer;
+    let audioSource;
+    let fallbackAudio;
+    let isAudioStarting = false;
+    let hasStartedAudio = false;
     const cloudLanes = [0.02, 0.07, 0.11, 0.15];
     const bottomCloudLanes = [0.78, 0.84, 0.9, 0.95];
     const cloudMinGap = 110;
@@ -73,6 +81,80 @@
       window.setTimeout(() => {
         document.body.classList.add("scene-night");
       }, sceneTransitionDelay + sceneHoldDurationMs + sceneTransitionDurationMs + sceneHoldDurationMs);
+    }
+
+    async function loadAudioBuffer() {
+      if (audioBuffer) return audioBuffer;
+      if (!audioContext) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) {
+          return null;
+        }
+        audioContext = new AudioContextClass();
+      }
+
+      const response = await fetch(backgroundAudioSrc);
+      const arrayBuffer = await response.arrayBuffer();
+      audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      return audioBuffer;
+    }
+
+    function startBufferLoop(buffer) {
+      if (!audioContext || !buffer || audioSource) return;
+      audioSource = audioContext.createBufferSource();
+      audioSource.buffer = buffer;
+      audioSource.loop = true;
+      audioSource.connect(audioContext.destination);
+      audioSource.start(0);
+      audioSource.addEventListener("ended", () => {
+        audioSource = null;
+      }, { once: true });
+    }
+
+    async function startBackgroundAudio() {
+      if (hasStartedAudio || isAudioStarting) return;
+      isAudioStarting = true;
+
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          if (!audioContext) {
+            audioContext = new AudioContextClass();
+          }
+          if (audioContext.state === "suspended") {
+            await audioContext.resume();
+          }
+          const buffer = await loadAudioBuffer();
+          startBufferLoop(buffer);
+          hasStartedAudio = true;
+          return;
+        }
+
+        fallbackAudio = new Audio(backgroundAudioSrc);
+        fallbackAudio.loop = true;
+        fallbackAudio.preload = "auto";
+        await fallbackAudio.play();
+        hasStartedAudio = true;
+      } catch {
+        // Leave audio stopped if the browser blocks or decoding fails.
+      } finally {
+        isAudioStarting = false;
+      }
+    }
+
+    function registerAudioStart() {
+      if (!mapStage) return;
+
+      const handleFirstInteraction = () => {
+        startBackgroundAudio();
+        mapStage.removeEventListener("pointerdown", handleFirstInteraction);
+        mapStage.removeEventListener("click", handleFirstInteraction);
+        mapStage.removeEventListener("touchstart", handleFirstInteraction);
+      };
+
+      mapStage.addEventListener("pointerdown", handleFirstInteraction, { passive: true });
+      mapStage.addEventListener("click", handleFirstInteraction, { passive: true });
+      mapStage.addEventListener("touchstart", handleFirstInteraction, { passive: true });
     }
 
     function registerPwaShell() {
@@ -389,9 +471,11 @@
       scheduleCloudSpawn(bottomCloudLayerElement, bottomCloudTimers, () => spawnCloud(bottomCloudLayerElement, bottomCloudTimers, bottomConfig), 700 + Math.random() * 900);
     }
 
+    mapStage = document.getElementById("mapStage");
     cloudLayer = document.getElementById("cloudLayer");
     bottomCloudLayer = document.getElementById("bottomCloudLayer");
     registerPwaShell();
+    registerAudioStart();
     createClouds();
     startSceneTransition();
     window.addEventListener("resize", () => {
