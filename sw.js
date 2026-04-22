@@ -40,7 +40,7 @@ self.addEventListener("fetch", (event) => {
         const cloned = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, cloned));
         return response;
-      });
+      }).catch(() => cached || Response.error());
     })
   );
 });

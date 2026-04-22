@@ -217,11 +217,24 @@ button {
   transition: opacity var(--scene-transition-duration) linear;
 }
 
+.map-image--night {
+  opacity: 0;
+  transition: opacity var(--scene-transition-duration) linear;
+}
+
 .scene-sunset .map-image--base {
   opacity: 0;
 }
 
 .scene-sunset .map-image--sunset {
+  opacity: 1;
+}
+
+.scene-night .map-image--sunset {
+  opacity: 0;
+}
+
+.scene-night .map-image--night {
   opacity: 1;
 }
 
@@ -250,10 +263,17 @@ button {
 }
 
 .cloud__image {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: auto;
   animation: cloud-float var(--cloud-float-duration, 14s) ease-in-out infinite;
+  transition: opacity var(--scene-transition-duration) linear;
+}
+
+.cloud__image--base {
+  opacity: 1;
   filter:
     sepia(0)
     saturate(1)
@@ -261,10 +281,10 @@ button {
     brightness(1)
     contrast(1)
     drop-shadow(0 12px 18px rgba(111, 148, 170, 0.18));
-  transition: filter var(--scene-transition-duration) linear;
 }
 
-.scene-sunset .cloud__image {
+.cloud__image--sunset {
+  opacity: 0;
   filter:
     sepia(1)
     saturate(10.5)
@@ -272,6 +292,33 @@ button {
     brightness(1.03)
     contrast(1.06)
     drop-shadow(0 12px 18px rgba(111, 148, 170, 0.18));
+}
+
+.cloud__image--night {
+  opacity: 0;
+  filter:
+    sepia(1)
+    saturate(7.8)
+    hue-rotate(152deg)
+    brightness(0.28)
+    contrast(1.22)
+    drop-shadow(0 12px 18px rgba(18, 34, 72, 0.38));
+}
+
+.scene-sunset .cloud__image--base {
+  opacity: 0;
+}
+
+.scene-sunset .cloud__image--sunset {
+  opacity: 1;
+}
+
+.scene-night .cloud__image--sunset {
+  opacity: 0;
+}
+
+.scene-night .cloud__image--night {
+  opacity: 1;
 }
 
 .app-shell--image {

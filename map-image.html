@@ -27,6 +27,12 @@
           alt=""
           aria-hidden="true"
         >
+        <img
+          class="map-image map-image--night"
+          src="images/map_night.svg"
+          alt=""
+          aria-hidden="true"
+        >
         <div class="cloud-layer cloud-layer--bottom" id="bottomCloudLayer" aria-hidden="true"></div>
         <div class="cloud-layer" id="cloudLayer" aria-hidden="true"></div>
       </div>
@@ -52,6 +58,8 @@
     const cloudMinGap = 110;
     const bottomCloudMinGap = 90;
     const sceneTransitionDelay = 120;
+    const sceneTransitionDurationMs = 10000;
+    const sceneHoldDurationMs = 10000;
 
     function isStandaloneMode() {
       return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
@@ -60,7 +68,11 @@
     function startSceneTransition() {
       window.setTimeout(() => {
         document.body.classList.add("scene-sunset");
-      }, sceneTransitionDelay);
+      }, sceneTransitionDelay + sceneHoldDurationMs);
+
+      window.setTimeout(() => {
+        document.body.classList.add("scene-night");
+      }, sceneTransitionDelay + sceneHoldDurationMs + sceneTransitionDurationMs + sceneHoldDurationMs);
     }
 
     function registerPwaShell() {
@@ -259,7 +271,9 @@
 
       const spec = randomCloudSpec(config);
       const cloud = document.createElement("div");
-      const cloudImage = document.createElement("img");
+      const cloudImageBase = document.createElement("img");
+      const cloudImageSunset = document.createElement("img");
+      const cloudImageNight = document.createElement("img");
       const endLeft = window.innerWidth + spec.width;
       const startLeft = findSpawnLeft(layer, spec.width, spec.laneIndex, config.minGap, options);
       const remainingDistance = Math.max(endLeft - startLeft, spec.width);
@@ -273,11 +287,21 @@
       cloud.style.setProperty("--cloud-float-duration", `${spec.floatDuration}s`);
       cloud.style.setProperty("--cloud-float-offset", `${spec.floatOffset}px`);
 
-      cloudImage.className = "cloud__image";
-      cloudImage.src = spec.src;
-      cloudImage.alt = "";
+      cloudImageBase.className = "cloud__image cloud__image--base";
+      cloudImageBase.src = spec.src;
+      cloudImageBase.alt = "";
 
-      cloud.append(cloudImage);
+      cloudImageSunset.className = "cloud__image cloud__image--sunset";
+      cloudImageSunset.src = spec.src;
+      cloudImageSunset.alt = "";
+      cloudImageSunset.setAttribute("aria-hidden", "true");
+
+      cloudImageNight.className = "cloud__image cloud__image--night";
+      cloudImageNight.src = spec.src;
+      cloudImageNight.alt = "";
+      cloudImageNight.setAttribute("aria-hidden", "true");
+
+      cloud.append(cloudImageBase, cloudImageSunset, cloudImageNight);
       placeCloud(cloud, startLeft, spec.top, spec.width, spec.laneIndex);
 
       layer.append(cloud);
