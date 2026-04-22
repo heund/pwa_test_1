@@ -38,14 +38,37 @@
       </div>
     </main>
   </div>
+  <audio id="mapBackgroundAudio" preload="auto" loop playsinline webkit-playsinline>
+    <source src="sound/map_background.mp3" type="audio/mpeg">
+  </audio>
 
   <script>
     const cloudAssets = [
-      "images/cloud_asset_01.svg",
-      "images/cloud_asset_02.svg",
-      "images/cloud_asset_03.svg",
-      "images/cloud_asset_04.svg",
-      "images/cloud_asset_05.svg"
+      {
+        base: "images/cloud_asset_01.svg",
+        sunset: "images/cloud_asset_01_sunset.svg",
+        night: "images/cloud_asset_01_night.svg"
+      },
+      {
+        base: "images/cloud_asset_02.svg",
+        sunset: "images/cloud_asset_02_sunset.svg",
+        night: "images/cloud_asset_02_night.svg"
+      },
+      {
+        base: "images/cloud_asset_03.svg",
+        sunset: "images/cloud_asset_03_sunset.svg",
+        night: "images/cloud_asset_03_night.svg"
+      },
+      {
+        base: "images/cloud_asset_04.svg",
+        sunset: "images/cloud_asset_04_sunset.svg",
+        night: "images/cloud_asset_04_night.svg"
+      },
+      {
+        base: "images/cloud_asset_05.svg",
+        sunset: "images/cloud_asset_05_sunset.svg",
+        night: "images/cloud_asset_05_night.svg"
+      }
     ];
     const backgroundAudioSrc = "sound/map_background.mp3";
 
@@ -55,10 +78,7 @@
     let cloudTimers = [];
     let bottomCloudTimers = [];
     let cloudResizeFrame = 0;
-    let audioContext;
-    let audioBuffer;
-    let audioSource;
-    let fallbackAudio;
+    let backgroundAudio;
     let isAudioStarting = false;
     let hasStartedAudio = false;
     const cloudLanes = [0.02, 0.07, 0.11, 0.15];
@@ -83,57 +103,20 @@
       }, sceneTransitionDelay + sceneHoldDurationMs + sceneTransitionDurationMs + sceneHoldDurationMs);
     }
 
-    async function loadAudioBuffer() {
-      if (audioBuffer) return audioBuffer;
-      if (!audioContext) {
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContextClass) {
-          return null;
-        }
-        audioContext = new AudioContextClass();
-      }
-
-      const response = await fetch(backgroundAudioSrc);
-      const arrayBuffer = await response.arrayBuffer();
-      audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      return audioBuffer;
-    }
-
-    function startBufferLoop(buffer) {
-      if (!audioContext || !buffer || audioSource) return;
-      audioSource = audioContext.createBufferSource();
-      audioSource.buffer = buffer;
-      audioSource.loop = true;
-      audioSource.connect(audioContext.destination);
-      audioSource.start(0);
-      audioSource.addEventListener("ended", () => {
-        audioSource = null;
-      }, { once: true });
-    }
-
     async function startBackgroundAudio() {
       if (hasStartedAudio || isAudioStarting) return;
       isAudioStarting = true;
 
       try {
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        if (AudioContextClass) {
-          if (!audioContext) {
-            audioContext = new AudioContextClass();
-          }
-          if (audioContext.state === "suspended") {
-            await audioContext.resume();
-          }
-          const buffer = await loadAudioBuffer();
-          startBufferLoop(buffer);
-          hasStartedAudio = true;
-          return;
+        if (!backgroundAudio) {
+          backgroundAudio = document.getElementById("mapBackgroundAudio");
         }
+        if (!backgroundAudio) return;
 
-        fallbackAudio = new Audio(backgroundAudioSrc);
-        fallbackAudio.loop = true;
-        fallbackAudio.preload = "auto";
-        await fallbackAudio.play();
+        backgroundAudio.volume = 1;
+        backgroundAudio.muted = false;
+        backgroundAudio.loop = true;
+        await backgroundAudio.play();
         hasStartedAudio = true;
       } catch {
         // Leave audio stopped if the browser blocks or decoding fails.
@@ -145,11 +128,13 @@
     function registerAudioStart() {
       if (!mapStage) return;
 
-      const handleFirstInteraction = () => {
-        startBackgroundAudio();
-        mapStage.removeEventListener("pointerdown", handleFirstInteraction);
-        mapStage.removeEventListener("click", handleFirstInteraction);
-        mapStage.removeEventListener("touchstart", handleFirstInteraction);
+      const handleFirstInteraction = async () => {
+        await startBackgroundAudio();
+        if (hasStartedAudio) {
+          mapStage.removeEventListener("pointerdown", handleFirstInteraction);
+          mapStage.removeEventListener("click", handleFirstInteraction);
+          mapStage.removeEventListener("touchstart", handleFirstInteraction);
+        }
       };
 
       mapStage.addEventListener("pointerdown", handleFirstInteraction, { passive: true });
@@ -236,7 +221,7 @@
       const topJitter = Math.round((Math.random() - 0.5) * config.topJitter);
 
       return {
-        src: cloudAssets[Math.floor(Math.random() * cloudAssets.length)],
+        asset: cloudAssets[Math.floor(Math.random() * cloudAssets.length)],
         width,
         height,
         top: Math.max(12, laneTop + topJitter),
@@ -370,16 +355,16 @@
       cloud.style.setProperty("--cloud-float-offset", `${spec.floatOffset}px`);
 
       cloudImageBase.className = "cloud__image cloud__image--base";
-      cloudImageBase.src = spec.src;
+      cloudImageBase.src = spec.asset.base;
       cloudImageBase.alt = "";
 
       cloudImageSunset.className = "cloud__image cloud__image--sunset";
-      cloudImageSunset.src = spec.src;
+      cloudImageSunset.src = spec.asset.sunset;
       cloudImageSunset.alt = "";
       cloudImageSunset.setAttribute("aria-hidden", "true");
 
       cloudImageNight.className = "cloud__image cloud__image--night";
-      cloudImageNight.src = spec.src;
+      cloudImageNight.src = spec.asset.night || spec.asset.base;
       cloudImageNight.alt = "";
       cloudImageNight.setAttribute("aria-hidden", "true");
 
@@ -474,6 +459,7 @@
     mapStage = document.getElementById("mapStage");
     cloudLayer = document.getElementById("cloudLayer");
     bottomCloudLayer = document.getElementById("bottomCloudLayer");
+    backgroundAudio = document.getElementById("mapBackgroundAudio");
     registerPwaShell();
     registerAudioStart();
     createClouds();
