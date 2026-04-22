@@ -1,9 +1,10 @@
-const CACHE_NAME = "jeju-map-prototype-v4";
+const CACHE_NAME = "jeju-map-prototype-v6";
 const ASSETS = [
   "./",
-  "./index.html",
+  "./map-image.html",
   "./styles.css",
-  "./app.js",
+  "./scripts/map-image.js",
+  "./scripts/services/jeju-solar.js",
   "./manifest.webmanifest",
   "./map-reference-breakdown.md"
 ];
