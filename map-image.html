@@ -17,9 +17,15 @@
     <main class="map-screen map-screen--image">
       <div class="map-stage map-stage--image">
         <img
-          class="map-image"
+          class="map-image map-image--base"
           src="images/map_no_cloud.svg"
           alt="제주 게임 맵"
+        >
+        <img
+          class="map-image map-image--sunset"
+          src="images/map_sunset.svg"
+          alt=""
+          aria-hidden="true"
         >
         <div class="cloud-layer cloud-layer--bottom" id="bottomCloudLayer" aria-hidden="true"></div>
         <div class="cloud-layer" id="cloudLayer" aria-hidden="true"></div>
@@ -45,9 +51,16 @@
     const bottomCloudLanes = [0.78, 0.84, 0.9, 0.95];
     const cloudMinGap = 110;
     const bottomCloudMinGap = 90;
+    const sceneTransitionDelay = 120;
 
     function isStandaloneMode() {
       return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+    }
+
+    function startSceneTransition() {
+      window.setTimeout(() => {
+        document.body.classList.add("scene-sunset");
+      }, sceneTransitionDelay);
     }
 
     function registerPwaShell() {
@@ -356,6 +369,7 @@
     bottomCloudLayer = document.getElementById("bottomCloudLayer");
     registerPwaShell();
     createClouds();
+    startSceneTransition();
     window.addEventListener("resize", () => {
       if (cloudResizeFrame) {
         window.clearTimeout(cloudResizeFrame);
