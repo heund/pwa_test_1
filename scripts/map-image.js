@@ -54,8 +54,9 @@ const TEST_SCENE_STATES = {
 const AUDIO_ENABLED = false;
 
 let mapStage;
-let mapImagePrimary;
-let mapImageSecondary;
+let mapImageDay;
+let mapImageSunset;
+let mapImageNight;
 let cloudLayer;
 let bottomCloudLayer;
 let backgroundAudio;
@@ -65,6 +66,7 @@ let cloudTimers = [];
 let bottomCloudTimers = [];
 let cloudResizeFrame = 0;
 let sceneRefreshTimer = 0;
+let sceneVisualTimer = 0;
 let lifecycleSyncTimer = 0;
 let isAudioStarting = false;
 let hasStartedAudio = false;
@@ -76,12 +78,8 @@ let loadingCompletionWaiters = [];
 let loadingTrickleTimer = 0;
 let loadingTrickleCap = 0;
 let currentScenePhase = null;
-let activeMapImage;
-let inactiveMapImage;
 let mapStateSyncPromise = null;
 const preloadedAssetPromises = new Map();
-let sceneTransitionToken = 0;
-let sceneCleanupTimer = 0;
 let testModePanel;
 let testModePhaseValue;
 let testModeTimeValue;
@@ -210,10 +208,10 @@ function clearSceneRefreshTimer() {
   sceneRefreshTimer = 0;
 }
 
-function clearSceneCleanupTimer() {
-  if (!sceneCleanupTimer) return;
-  window.clearTimeout(sceneCleanupTimer);
-  sceneCleanupTimer = 0;
+function clearSceneVisualTimer() {
+  if (!sceneVisualTimer) return;
+  window.clearTimeout(sceneVisualTimer);
+  sceneVisualTimer = 0;
 }
 
 function flushLoadingWaiters() {
@@ -303,24 +301,6 @@ function startLoadingTrickle(cap = 0.84) {
   scheduleLoadingTrickle();
 }
 
-function getSceneTransitionDurationMs() {
-  const duration = getComputedStyle(document.documentElement).getPropertyValue("--scene-transition-duration").trim();
-
-  if (!duration) {
-    return 10000;
-  }
-
-  if (duration.endsWith("ms")) {
-    return Number.parseFloat(duration) || 10000;
-  }
-
-  if (duration.endsWith("s")) {
-    return (Number.parseFloat(duration) || 10) * 1000;
-  }
-
-  return 10000;
-}
-
 function formatClockTime(value, timeZone = "Asia/Seoul") {
   return new Intl.DateTimeFormat("ko-KR", {
     timeZone,
@@ -399,10 +379,14 @@ function startTestModeClock() {
 
 function getTestSceneState() {
   const scene = TEST_SCENE_STATES[testScenePhase] || TEST_SCENE_STATES.day;
+  const visual = scene.phase === "night"
+    ? { sunsetOpacity: 1, nightOpacity: 1, isTransitioning: false }
+    : { sunsetOpacity: 0, nightOpacity: 0, isTransitioning: false };
 
   return {
     phase: scene.phase,
     nextTransitionAt: null,
+    visual,
     testMode: {
       label: scene.label,
       simulatedNow: scene.simulatedNow
@@ -801,17 +785,6 @@ function markSceneReady() {
   });
 }
 
-function setScenePhase(phase) {
-  resetSceneClasses();
-  if (phase === "sunset") {
-    document.body.classList.add("scene-sunset");
-    return;
-  }
-  if (phase === "night") {
-    document.body.classList.add("scene-sunset", "scene-night");
-  }
-}
-
 function hasRenderableSceneState(sceneState) {
   return Boolean(sceneState?.phase);
 }
@@ -837,10 +810,71 @@ function waitForImageElement(image) {
   }).then(() => (image.decode ? image.decode().catch(() => {}) : undefined));
 }
 
-async function preloadStartupAssets() {
-  const mapUrls = Object.values(mapSceneAssets);
+function setMapImageSource(image, src) {
+  if (!image || !src) return;
+  if (image.getAttribute("src") !== src) {
+    image.setAttribute("src", src);
+  }
+}
+
+function getMapImageElementForPhase(phase) {
+  if (phase === "sunset") {
+    return mapImageSunset;
+  }
+  if (phase === "night") {
+    return mapImageNight;
+  }
+  return mapImageDay;
+}
+
+function getMapAssetLoadOrder(sceneState) {
+  const visual = sceneState?.visual || getVisualStateForPhase(sceneState?.phase);
+  const sunsetOpacity = Number(visual.sunsetOpacity || 0);
+  const nightOpacity = Number(visual.nightOpacity || 0);
+
+  if (nightOpacity >= 0.95) {
+    return ["night", "day", "sunset"];
+  }
+
+  if (nightOpacity > 0 && sunsetOpacity > 0) {
+    return ["night", "sunset", "day"];
+  }
+
+  if (nightOpacity > 0) {
+    return ["night", "day", "sunset"];
+  }
+
+  if (sunsetOpacity > 0.5) {
+    return ["sunset", "day", "night"];
+  }
+
+  return ["day", "sunset", "night"];
+}
+
+async function loadMapImagesInPriorityOrder(sceneState) {
+  const orderedPhases = getMapAssetLoadOrder(sceneState);
+
+  orderedPhases.forEach((phase) => {
+    setMapImageSource(getMapImageElementForPhase(phase), mapSceneAssets[phase]);
+  });
+
+  const firstPhase = orderedPhases[0];
+  await ensureAssetReady(mapSceneAssets[firstPhase]);
+  await waitForImageElement(getMapImageElementForPhase(firstPhase));
+
+  await Promise.all(
+    orderedPhases.slice(1).map(async (phase) => {
+      await ensureAssetReady(mapSceneAssets[phase]);
+      await waitForImageElement(getMapImageElementForPhase(phase));
+    })
+  );
+}
+
+async function preloadStartupAssets(sceneState) {
+  await loadMapImagesInPriorityOrder(sceneState);
+
   const cloudUrls = cloudAssets.flatMap((asset) => [asset.base, asset.sunset, asset.night]).filter(Boolean);
-  const uniqueCloudUrls = Array.from(new Set([...mapUrls, ...cloudUrls]));
+  const uniqueCloudUrls = Array.from(new Set(cloudUrls));
 
   const assetPromises = uniqueCloudUrls.map((src) => ensureAssetReady(src));
 
@@ -862,22 +896,7 @@ function ensureAssetReady(src) {
   return preloadedAssetPromises.get(src);
 }
 
-function setMapImageSource(image, src) {
-  if (!image) return;
-  if (!src) {
-    image.removeAttribute("src");
-    return;
-  }
-  if (image.getAttribute("src") !== src) {
-    image.setAttribute("src", src);
-  }
-}
-
-function getMapImageForPhase(phase) {
-  return mapSceneAssets[phase] || mapSceneAssets.day;
-}
-
-function syncCloudPhase(phase) {
+function syncSceneClass(phase) {
   resetSceneClasses();
   if (phase === "sunset") {
     document.body.classList.add("scene-sunset");
@@ -888,91 +907,41 @@ function syncCloudPhase(phase) {
   }
 }
 
+function getVisualStateForPhase(phase) {
+  if (phase === "night") {
+    return { sunsetOpacity: 1, nightOpacity: 1, isTransitioning: false };
+  }
+  if (phase === "sunset") {
+    return { sunsetOpacity: 1, nightOpacity: 0, isTransitioning: false };
+  }
+  return { sunsetOpacity: 0, nightOpacity: 0, isTransitioning: false };
+}
+
+function applySceneVisualState(visual = {}) {
+  const sunsetOpacity = Math.max(0, Math.min(Number(visual.sunsetOpacity || 0), 1));
+  const nightOpacity = Math.max(0, Math.min(Number(visual.nightOpacity || 0), 1));
+  const dayCloudOpacity = Math.max(0, 1 - Math.max(sunsetOpacity, nightOpacity));
+  const sunsetCloudOpacity = Math.max(0, sunsetOpacity * (1 - nightOpacity));
+
+  document.documentElement.style.setProperty("--sunset-opacity", sunsetOpacity.toFixed(4));
+  document.documentElement.style.setProperty("--night-opacity", nightOpacity.toFixed(4));
+  document.documentElement.style.setProperty("--day-cloud-opacity", dayCloudOpacity.toFixed(4));
+  document.documentElement.style.setProperty("--sunset-cloud-opacity", sunsetCloudOpacity.toFixed(4));
+}
+
 function applySceneImmediately(phase, options = {}) {
-  const { reveal = true } = options;
-  const targetSrc = getMapImageForPhase(phase);
-  sceneTransitionToken += 1;
-  clearSceneCleanupTimer();
+  const { reveal = true, visual = null } = options;
 
   if (mapStage) {
     mapStage.classList.remove("is-transitioning");
   }
-  syncCloudPhase(phase);
-  setMapImageSource(activeMapImage, targetSrc);
-  activeMapImage.classList.add("is-visible");
-  setMapImageSource(inactiveMapImage, "");
-  inactiveMapImage.classList.remove("is-visible");
+  syncSceneClass(phase);
+  applySceneVisualState(visual || getVisualStateForPhase(phase));
   currentScenePhase = phase;
 
   if (reveal) {
     markSceneReady();
   }
-}
-
-async function transitionScene(phase) {
-  const targetSrc = getMapImageForPhase(phase);
-  clearSceneCleanupTimer();
-  const transitionToken = ++sceneTransitionToken;
-  const cleanupDelay = getSceneTransitionDurationMs() + 100;
-
-  if (!activeMapImage || !inactiveMapImage || currentScenePhase === phase) {
-    applySceneImmediately(phase, { reveal: false });
-    return;
-  }
-
-  await ensureAssetReady(targetSrc);
-
-  if (isTestMode()) {
-    pushTestModeLog(`Asset preload confirmed for ${phase}: ${targetSrc}`);
-  }
-
-  if (transitionToken !== sceneTransitionToken) {
-    return;
-  }
-
-  syncCloudPhase(phase);
-  setMapImageSource(inactiveMapImage, targetSrc);
-  logTestImageState("inactive before wait", inactiveMapImage);
-  await waitForImageElement(inactiveMapImage);
-  logTestImageState("inactive after wait", inactiveMapImage);
-
-  if (transitionToken !== sceneTransitionToken) {
-    return;
-  }
-
-  if (mapStage) {
-    mapStage.classList.add("is-transitioning");
-  }
-
-  const outgoingImage = activeMapImage;
-  const incomingImage = inactiveMapImage;
-
-  inactiveMapImage.classList.add("is-visible");
-  logTestImageState("inactive made visible", incomingImage);
-  logTestImageState("active before fade out", outgoingImage);
-
-  window.requestAnimationFrame(() => {
-    outgoingImage.classList.remove("is-visible");
-    logTestImageState("active after fade out start", outgoingImage);
-  });
-
-  activeMapImage = incomingImage;
-  inactiveMapImage = outgoingImage;
-  currentScenePhase = phase;
-
-  sceneCleanupTimer = window.setTimeout(() => {
-    if (transitionToken !== sceneTransitionToken) {
-      return;
-    }
-
-    sceneCleanupTimer = 0;
-    if (mapStage) {
-      mapStage.classList.remove("is-transitioning");
-    }
-    logTestImageState("inactive cleanup target", outgoingImage);
-    outgoingImage.classList.remove("is-visible");
-    setMapImageSource(outgoingImage, "");
-  }, cleanupDelay);
 }
 
 function scheduleSceneRefresh(nextTransitionAt) {
@@ -1005,6 +974,18 @@ function scheduleSceneRefresh(nextTransitionAt) {
     });
     syncMapState();
   }, delay);
+}
+
+function scheduleSceneVisualRefresh(sceneState) {
+  clearSceneVisualTimer();
+  if (isTestMode() || !sceneState?.visual?.isTransitioning) {
+    return;
+  }
+
+  sceneVisualTimer = window.setTimeout(() => {
+    sceneVisualTimer = 0;
+    syncMapState();
+  }, 30000);
 }
 
 async function getInitialSceneState() {
@@ -1073,7 +1054,7 @@ function applyRuntimeSceneState(sceneState) {
   }
 
   if (currentScenePhase === null) {
-    applySceneImmediately(sceneState.phase, { reveal: false });
+    applySceneImmediately(sceneState.phase, { reveal: false, visual: sceneState.visual });
     return;
   }
 
@@ -1085,7 +1066,9 @@ function applyRuntimeSceneState(sceneState) {
       from: currentScenePhase,
       to: sceneState.phase
     });
-    void transitionScene(sceneState.phase);
+    syncSceneClass(sceneState.phase);
+    applySceneVisualState(sceneState.visual || getVisualStateForPhase(sceneState.phase));
+    currentScenePhase = sceneState.phase;
     return;
   }
 
@@ -1095,7 +1078,8 @@ function applyRuntimeSceneState(sceneState) {
   logSceneDebug("Scene already correct", {
     phase: sceneState.phase
   });
-  syncCloudPhase(sceneState.phase);
+  syncSceneClass(sceneState.phase);
+  applySceneVisualState(sceneState.visual || getVisualStateForPhase(sceneState.phase));
 }
 
 function syncMapState(options = {}) {
@@ -1107,6 +1091,7 @@ function syncMapState(options = {}) {
 
   mapStateSyncPromise = (async () => {
     clearSceneRefreshTimer();
+    clearSceneVisualTimer();
 
     if (initial) {
       setLoadingProgress(0.35);
@@ -1129,16 +1114,17 @@ function syncMapState(options = {}) {
 
       if (initial) {
         setLoadingProgress(0.52);
-        await preloadStartupAssets();
+        await preloadStartupAssets(sceneState);
         setLoadingProgress(0.76);
         startLoadingTrickle(0.88);
-        applySceneImmediately(sceneState.phase, { reveal: true });
+        applySceneImmediately(sceneState.phase, { reveal: true, visual: sceneState.visual });
       } else {
         applyRuntimeSceneState(sceneState);
       }
 
       updateTestModePanel(sceneState);
       scheduleSceneRefresh(sceneState.nextTransitionAt);
+      scheduleSceneVisualRefresh(sceneState);
     } catch {
       if (initial) {
         clearLoadingTrickle();
@@ -1204,10 +1190,9 @@ async function disableServiceWorkersForPrototype() {
 
 function init() {
   mapStage = document.getElementById("mapStage");
-  mapImagePrimary = document.getElementById("mapImagePrimary");
-  mapImageSecondary = document.getElementById("mapImageSecondary");
-  activeMapImage = mapImagePrimary;
-  inactiveMapImage = mapImageSecondary;
+  mapImageDay = document.getElementById("mapImageDay");
+  mapImageSunset = document.getElementById("mapImageSunset");
+  mapImageNight = document.getElementById("mapImageNight");
   cloudLayer = document.getElementById("cloudLayer");
   bottomCloudLayer = document.getElementById("bottomCloudLayer");
   backgroundAudio = document.getElementById("mapBackgroundAudio");
@@ -1219,7 +1204,7 @@ function init() {
     pushTestModeLog("Test mode initialized");
   }
 
-  [mapImagePrimary, mapImageSecondary].forEach((image, index) => {
+  [mapImageDay, mapImageSunset, mapImageNight].forEach((image, index) => {
     if (!image) return;
 
     image.addEventListener("load", () => {

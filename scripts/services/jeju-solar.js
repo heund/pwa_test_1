@@ -6,7 +6,9 @@ const JEJU_LOCATION = {
 
 const SOLAR_API_URL = "https://api.sunrise-sunset.org/json";
 const CACHE_PREFIX = "jeju-solar-v2";
+const MINUTE_IN_MS = 60 * 1000;
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const SUNSET_BLEND_START_OFFSET_MS = 44 * MINUTE_IN_MS;
 
 function getJejuDateString(now = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -46,6 +48,138 @@ function writeCachedSolar(dateString, payload) {
 
 function toDate(value) {
   return value ? new Date(value) : null;
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(value, 1));
+}
+
+function smoothstep(value) {
+  const amount = clamp01(value);
+  return amount * amount * (3 - 2 * amount);
+}
+
+function progressBetween(now, start, end) {
+  const duration = end.getTime() - start.getTime();
+  if (duration <= 0) {
+    return now >= end ? 1 : 0;
+  }
+
+  return clamp01((now.getTime() - start.getTime()) / duration);
+}
+
+function buildVisualState(now, civilTwilightBegin, sunrise, sunset, civilTwilightEnd) {
+  const sunsetStart = new Date(sunset.getTime() - SUNSET_BLEND_START_OFFSET_MS);
+  const sunsetProgress = smoothstep(progressBetween(now, sunsetStart, sunset));
+  const duskNightProgress = smoothstep(progressBetween(now, sunset, civilTwilightEnd));
+  const dawnNightProgress = 1 - smoothstep(progressBetween(now, civilTwilightBegin, sunrise));
+  const nightProgress = now < sunrise ? dawnNightProgress : duskNightProgress;
+  const isDawnTransition = now >= civilTwilightBegin && now < sunrise;
+  const isDuskTransition = sunsetProgress > 0 && duskNightProgress < 1;
+
+  return {
+    sunsetOpacity: now < sunrise ? 0 : sunsetProgress,
+    nightOpacity: nightProgress,
+    dayStartAt: sunrise.toISOString(),
+    dawnStartAt: civilTwilightBegin.toISOString(),
+    sunsetStartAt: sunsetStart.toISOString(),
+    sunsetFullAt: sunset.toISOString(),
+    nightFullAt: civilTwilightEnd.toISOString(),
+    isTransitioning: isDawnTransition || isDuskTransition
+  };
+}
+
+function buildSceneState(now, today, tomorrow = null) {
+  const sunrise = toDate(today.sunrise);
+  const civilTwilightBegin = toDate(today.civilTwilightBegin);
+  const sunset = toDate(today.sunset);
+  const civilTwilightEnd = toDate(today.civilTwilightEnd);
+
+  if (!sunrise || !civilTwilightBegin || !sunset || !civilTwilightEnd) {
+    return null;
+  }
+
+  const sunsetStart = new Date(sunset.getTime() - SUNSET_BLEND_START_OFFSET_MS);
+  const visual = buildVisualState(now, civilTwilightBegin, sunrise, sunset, civilTwilightEnd);
+
+  if (now < civilTwilightBegin) {
+    return {
+      phase: "night",
+      nextTransitionAt: today.civilTwilightBegin,
+      visual: {
+        ...visual,
+        isTransitioning: false
+      },
+      solar: { today }
+    };
+  }
+
+  if (now < sunrise) {
+    return {
+      phase: "night",
+      nextTransitionAt: today.sunrise,
+      visual,
+      solar: { today }
+    };
+  }
+
+  if (now < sunsetStart) {
+    return {
+      phase: "day",
+      nextTransitionAt: visual.sunsetStartAt,
+      visual: {
+        ...visual,
+        sunsetOpacity: 0,
+        nightOpacity: 0,
+        isTransitioning: false
+      },
+      solar: { today }
+    };
+  }
+
+  if (now < sunset) {
+    return {
+      phase: "day",
+      nextTransitionAt: today.sunset,
+      visual,
+      solar: { today }
+    };
+  }
+
+  if (now < civilTwilightEnd) {
+    return {
+      phase: "sunset",
+      nextTransitionAt: today.civilTwilightEnd,
+      visual,
+      solar: { today }
+    };
+  }
+
+  if (!tomorrow?.sunrise) {
+    return {
+      phase: "night",
+      nextTransitionAt: null,
+      visual: {
+        ...visual,
+        sunsetOpacity: 1,
+        nightOpacity: 1,
+        isTransitioning: false
+      },
+      solar: { today }
+    };
+  }
+
+  return {
+    phase: "night",
+    nextTransitionAt: tomorrow.sunrise,
+    visual: {
+      ...visual,
+      sunsetOpacity: 1,
+      nightOpacity: 1,
+      isTransitioning: false
+    },
+    solar: { today, tomorrow }
+  };
 }
 
 async function fetchSolarForDate(dateString) {
@@ -105,103 +239,40 @@ export function getCachedJejuSceneState(now = new Date()) {
     return null;
   }
 
-  const sunrise = toDate(today.sunrise);
-  const sunset = toDate(today.sunset);
-  const civilTwilightEnd = toDate(today.civilTwilightEnd);
-
-  if (!sunrise || !sunset || !civilTwilightEnd) {
+  const baseSceneState = buildSceneState(now, today);
+  if (!baseSceneState) {
     return null;
   }
 
-  if (now < sunrise) {
-    return {
-      phase: "night",
-      nextTransitionAt: today.sunrise,
-      solar: { today }
-    };
-  }
-
-  if (now < sunset) {
-    return {
-      phase: "day",
-      nextTransitionAt: today.sunset,
-      solar: { today }
-    };
-  }
-
-  if (now < civilTwilightEnd) {
-    return {
-      phase: "sunset",
-      nextTransitionAt: today.civilTwilightEnd,
-      solar: { today }
-    };
+  if (baseSceneState.nextTransitionAt !== null || baseSceneState.phase !== "night") {
+    return baseSceneState;
   }
 
   const tomorrowKey = shiftJejuDate(todayKey, 1);
   const tomorrow = readCachedSolar(tomorrowKey);
-
-  if (!tomorrow?.sunrise) {
-    return {
-      phase: "night",
-      nextTransitionAt: null,
-      solar: { today }
-    };
-  }
-
-  return {
-    phase: "night",
-    nextTransitionAt: tomorrow.sunrise,
-    solar: { today, tomorrow }
-  };
+  return buildSceneState(now, today, tomorrow);
 }
 
 export async function getJejuSceneState(now = new Date()) {
   const todayKey = getJejuDateString(now);
   const today = await getSolarForDate(todayKey);
-  const sunrise = toDate(today.sunrise);
-  const sunset = toDate(today.sunset);
-  const civilTwilightEnd = toDate(today.civilTwilightEnd);
-
-  if (!sunrise || !sunset || !civilTwilightEnd) {
+  const baseSceneState = buildSceneState(now, today);
+  if (!baseSceneState) {
     throw new Error("Missing required solar timing data");
   }
 
-  if (now < sunrise) {
-    return {
-      phase: "night",
-      nextTransitionAt: today.sunrise,
-      solar: { today }
-    };
-  }
-
-  if (now < sunset) {
-    return {
-      phase: "day",
-      nextTransitionAt: today.sunset,
-      solar: { today }
-    };
-  }
-
-  if (now < civilTwilightEnd) {
-    return {
-      phase: "sunset",
-      nextTransitionAt: today.civilTwilightEnd,
-      solar: { today }
-    };
+  if (baseSceneState.nextTransitionAt !== null || baseSceneState.phase !== "night") {
+    return baseSceneState;
   }
 
   const tomorrowKey = shiftJejuDate(todayKey, 1);
   const tomorrow = await getSolarForDate(tomorrowKey);
-
-  if (!tomorrow?.sunrise) {
+  const sceneState = buildSceneState(now, today, tomorrow);
+  if (!sceneState?.nextTransitionAt) {
     throw new Error("Missing next sunrise timing data");
   }
 
-  return {
-    phase: "night",
-    nextTransitionAt: tomorrow.sunrise,
-    solar: { today, tomorrow }
-  };
+  return sceneState;
 }
 
 export function getNextRefreshDelay(nextTransitionAt, now = new Date()) {

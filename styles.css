@@ -252,15 +252,23 @@ button {
   height: 100dvh;
   object-fit: cover;
   object-position: center;
-  opacity: 0;
-}
-
-.map-stage--image.is-transitioning .map-image {
-  transition: opacity var(--scene-transition-duration) linear;
-}
-
-.map-image.is-visible {
   opacity: 1;
+}
+
+.scene-live .map-image {
+  transition: opacity 30s linear;
+}
+
+.map-image--day {
+  opacity: 1;
+}
+
+.map-image--sunset {
+  opacity: var(--sunset-opacity, 0);
+}
+
+.map-image--night {
+  opacity: var(--night-opacity, 0);
 }
 
 .cloud-layer {
@@ -297,35 +305,19 @@ button {
 }
 
 .scene-live .cloud__image {
-  transition: opacity var(--scene-transition-duration) linear;
+  transition: opacity 30s linear;
 }
 
 .cloud__image--base {
-  opacity: 1;
+  opacity: var(--day-cloud-opacity, 1);
 }
 
 .cloud__image--sunset {
-  opacity: 0;
+  opacity: var(--sunset-cloud-opacity, 0);
 }
 
 .cloud__image--night {
-  opacity: 0;
-}
-
-.scene-sunset .cloud__image--base {
-  opacity: 0;
-}
-
-.scene-sunset .cloud__image--sunset {
-  opacity: 1;
-}
-
-.scene-night .cloud__image--sunset {
-  opacity: 0;
-}
-
-.scene-night .cloud__image--night {
-  opacity: 1;
+  opacity: var(--night-opacity, 0);
 }
 
 .app-shell--image {
