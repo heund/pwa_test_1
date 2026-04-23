@@ -1,7 +1,7 @@
 const CACHE_NAME = "jeju-map-prototype-v9";
 const APP_SHELL_ASSETS = [
   "./",
-  "./map-image.html",
+  "./map-image1.html",
   "./map-image-test.html",
   "./styles.css",
   "./scripts/map-image.js",

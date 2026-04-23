@@ -1,7 +1,7 @@
 {
   "name": "Jeju Map Prototype",
   "short_name": "Jeju Map",
-  "start_url": "./map-image.html",
+  "start_url": "./map-image1.html",
   "scope": "./",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
