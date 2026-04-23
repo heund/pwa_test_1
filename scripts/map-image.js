@@ -71,6 +71,8 @@ let loadingTargetProgress = 0;
 let loadingProgressFrame = 0;
 let loadingProgressLastTick = 0;
 let loadingCompletionWaiters = [];
+let loadingTrickleTimer = 0;
+let loadingTrickleCap = 0;
 let currentScenePhase = null;
 let activeMapImage;
 let inactiveMapImage;
@@ -217,6 +219,12 @@ function flushLoadingWaiters() {
   loadingCompletionWaiters = remainingWaiters;
 }
 
+function clearLoadingTrickle() {
+  if (!loadingTrickleTimer) return;
+  window.clearTimeout(loadingTrickleTimer);
+  loadingTrickleTimer = 0;
+}
+
 function renderLoadingProgress() {
   if (loadingBarFill) {
     loadingBarFill.style.transform = `scaleX(${loadingProgress})`;
@@ -258,6 +266,29 @@ function waitForLoadingProgress(minProgress = 1) {
   return new Promise((resolve) => {
     loadingCompletionWaiters.push({ minProgress, resolve });
   });
+}
+
+function scheduleLoadingTrickle() {
+  clearLoadingTrickle();
+
+  if (!loadingTrickleCap || loadingProgress >= loadingTrickleCap) {
+    return;
+  }
+
+  const remaining = loadingTrickleCap - loadingProgress;
+  const nextIncrement = Math.max(0.006, Math.min(0.022, remaining * 0.18));
+  const nextTarget = Math.min(loadingTrickleCap, loadingProgress + nextIncrement);
+
+  loadingTrickleTimer = window.setTimeout(() => {
+    loadingTrickleTimer = 0;
+    setLoadingProgress(nextTarget);
+    scheduleLoadingTrickle();
+  }, 220 + Math.random() * 180);
+}
+
+function startLoadingTrickle(cap = 0.84) {
+  loadingTrickleCap = Math.max(loadingProgress, Math.min(cap, 0.94));
+  scheduleLoadingTrickle();
 }
 
 function getSceneTransitionDurationMs() {
@@ -741,6 +772,8 @@ function setLoadingProgress(value) {
 }
 
 function markSceneReady() {
+  clearLoadingTrickle();
+  loadingTrickleCap = 0;
   setLoadingProgress(1);
   waitForLoadingProgress(0.995).then(() => {
     document.body.classList.remove("scene-loading");
@@ -1065,6 +1098,7 @@ function syncMapState(options = {}) {
 
     if (initial) {
       setLoadingProgress(0.35);
+      startLoadingTrickle(0.78);
     }
 
     try {
@@ -1082,9 +1116,10 @@ function syncMapState(options = {}) {
       });
 
       if (initial) {
-        setLoadingProgress(0.7);
+        setLoadingProgress(0.52);
         await preloadStartupAssets();
-        setLoadingProgress(0.92);
+        setLoadingProgress(0.76);
+        startLoadingTrickle(0.88);
         applySceneImmediately(sceneState.phase, { reveal: true });
       } else {
         applyRuntimeSceneState(sceneState);
@@ -1094,7 +1129,9 @@ function syncMapState(options = {}) {
       scheduleSceneRefresh(sceneState.nextTransitionAt);
     } catch {
       if (initial) {
-        setLoadingProgress(0.92);
+        clearLoadingTrickle();
+        loadingTrickleCap = 0;
+        setLoadingProgress(0.7);
       }
     }
   })().finally(() => {
@@ -1136,7 +1173,9 @@ function registerMapStateLifecycleSync() {
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    navigator.serviceWorker.register("./sw.js").then((registration) => {
+      registration.update().catch(() => {});
+    }).catch(() => {});
   });
 }
 
