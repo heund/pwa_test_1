@@ -271,6 +271,11 @@ button {
   opacity: var(--night-opacity, 0);
 }
 
+.map-image--sunset,
+.map-image--night {
+  transform: scale(1.012);
+}
+
 .cloud-layer {
   position: absolute;
   inset: 0;
