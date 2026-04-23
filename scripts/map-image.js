@@ -51,6 +51,8 @@ const TEST_SCENE_STATES = {
   }
 };
 
+const AUDIO_ENABLED = false;
+
 let mapStage;
 let mapImagePrimary;
 let mapImageSecondary;
@@ -114,6 +116,7 @@ function isStandaloneMode() {
 }
 
 async function startBackgroundAudio() {
+  if (!AUDIO_ENABLED) return;
   if (hasStartedAudio || isAudioStarting) return;
   isAudioStarting = true;
 
@@ -136,6 +139,15 @@ async function startBackgroundAudio() {
 }
 
 function registerAudioStart() {
+  if (!AUDIO_ENABLED) {
+    if (backgroundAudio) {
+      backgroundAudio.pause();
+      backgroundAudio.currentTime = 0;
+      backgroundAudio.muted = true;
+    }
+    return;
+  }
+
   if (!mapStage) return;
 
   const handleFirstInteraction = async () => {
@@ -1170,15 +1182,6 @@ function registerMapStateLifecycleSync() {
   window.addEventListener("focus", requestMapStateSync);
 }
 
-function registerServiceWorker() {
-  if (!("serviceWorker" in navigator)) return;
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").then((registration) => {
-      registration.update().catch(() => {});
-    }).catch(() => {});
-  });
-}
-
 function init() {
   mapStage = document.getElementById("mapStage");
   mapImagePrimary = document.getElementById("mapImagePrimary");
@@ -1215,7 +1218,6 @@ function init() {
   setLoadingProgress(0.28);
   syncMapState({ initial: true });
   registerMapStateLifecycleSync();
-  registerServiceWorker();
 
   window.addEventListener("resize", () => {
     if (cloudResizeFrame) {

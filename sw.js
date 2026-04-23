@@ -1,4 +1,4 @@
-const CACHE_NAME = "jeju-map-prototype-v8";
+const CACHE_NAME = "jeju-map-prototype-v9";
 const APP_SHELL_ASSETS = [
   "./",
   "./map-image.html",
