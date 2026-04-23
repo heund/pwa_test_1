@@ -1,1 +1,15 @@
 *.md
+/references/
+
+# Local animation studies / scratch prototypes
+/flower-animation-test.html
+/light-box-animation-test.html
+/light-fixture-test.html
+/scripts/flower-animation-test.js
+/scripts/light-box-animation-test.js
+/styles/flower-animation-test.css
+/styles/light-box-animation-test.css
+/images/light-body.svg
+/images/light-body-only.svg
+/images/light-handle-only.svg
+/images/light-paper.svg
