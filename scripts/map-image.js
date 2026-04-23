@@ -929,6 +929,14 @@ function applySceneVisualState(visual = {}) {
   document.documentElement.style.setProperty("--sunset-cloud-opacity", sunsetCloudOpacity.toFixed(4));
 }
 
+function snapSceneVisualState(callback) {
+  document.body.classList.add("scene-syncing");
+  callback();
+  window.requestAnimationFrame(() => {
+    document.body.classList.remove("scene-syncing");
+  });
+}
+
 function applySceneImmediately(phase, options = {}) {
   const { reveal = true, visual = null } = options;
 
@@ -1048,10 +1056,17 @@ async function getRuntimeSceneState() {
   return sceneState;
 }
 
-function applyRuntimeSceneState(sceneState) {
+function applyRuntimeSceneState(sceneState, options = {}) {
+  const { instant = false } = options;
   if (!hasRenderableSceneState(sceneState)) {
     return;
   }
+
+  const applyState = () => {
+    syncSceneClass(sceneState.phase);
+    applySceneVisualState(sceneState.visual || getVisualStateForPhase(sceneState.phase));
+    currentScenePhase = sceneState.phase;
+  };
 
   if (currentScenePhase === null) {
     applySceneImmediately(sceneState.phase, { reveal: false, visual: sceneState.visual });
@@ -1066,9 +1081,11 @@ function applyRuntimeSceneState(sceneState) {
       from: currentScenePhase,
       to: sceneState.phase
     });
-    syncSceneClass(sceneState.phase);
-    applySceneVisualState(sceneState.visual || getVisualStateForPhase(sceneState.phase));
-    currentScenePhase = sceneState.phase;
+    if (instant) {
+      snapSceneVisualState(applyState);
+    } else {
+      applyState();
+    }
     return;
   }
 
@@ -1078,12 +1095,15 @@ function applyRuntimeSceneState(sceneState) {
   logSceneDebug("Scene already correct", {
     phase: sceneState.phase
   });
-  syncSceneClass(sceneState.phase);
-  applySceneVisualState(sceneState.visual || getVisualStateForPhase(sceneState.phase));
+  if (instant) {
+    snapSceneVisualState(applyState);
+  } else {
+    applyState();
+  }
 }
 
 function syncMapState(options = {}) {
-  const { initial = false } = options;
+  const { initial = false, instant = false } = options;
 
   if (mapStateSyncPromise) {
     return mapStateSyncPromise;
@@ -1119,7 +1139,7 @@ function syncMapState(options = {}) {
         startLoadingTrickle(0.88);
         applySceneImmediately(sceneState.phase, { reveal: true, visual: sceneState.visual });
       } else {
-        applyRuntimeSceneState(sceneState);
+        applyRuntimeSceneState(sceneState, { instant });
       }
 
       updateTestModePanel(sceneState);
@@ -1153,7 +1173,7 @@ function requestMapStateSync() {
     logSceneDebug("Lifecycle resync requested", {
       at: new Date().toISOString()
     });
-    syncMapState();
+    syncMapState({ instant: true });
   }, 0);
 }
 
