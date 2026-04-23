@@ -1182,6 +1182,26 @@ function registerMapStateLifecycleSync() {
   window.addEventListener("focus", requestMapStateSync);
 }
 
+async function disableServiceWorkersForPrototype() {
+  if ("serviceWorker" in navigator) {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.unregister()));
+    } catch {
+      // Ignore service worker cleanup failures during prototype mode.
+    }
+  }
+
+  if ("caches" in window) {
+    try {
+      const cacheNames = await caches.keys();
+      await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
+    } catch {
+      // Ignore cache cleanup failures during prototype mode.
+    }
+  }
+}
+
 function init() {
   mapStage = document.getElementById("mapStage");
   mapImagePrimary = document.getElementById("mapImagePrimary");
@@ -1213,6 +1233,7 @@ function init() {
 
   setLoadingProgress(0.12);
   registerPwaShell();
+  void disableServiceWorkersForPrototype();
   registerAudioStart();
   createClouds();
   setLoadingProgress(0.28);
