@@ -309,11 +309,11 @@ button {
 }
 
 .cloud__image--base {
-  opacity: var(--day-cloud-opacity, 1);
+  opacity: 1;
 }
 
 .cloud__image--sunset {
-  opacity: var(--sunset-cloud-opacity, 0);
+  opacity: var(--sunset-opacity, 0);
 }
 
 .cloud__image--night {

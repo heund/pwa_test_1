@@ -920,13 +920,9 @@ function getVisualStateForPhase(phase) {
 function applySceneVisualState(visual = {}) {
   const sunsetOpacity = Math.max(0, Math.min(Number(visual.sunsetOpacity || 0), 1));
   const nightOpacity = Math.max(0, Math.min(Number(visual.nightOpacity || 0), 1));
-  const dayCloudOpacity = Math.max(0, 1 - Math.max(sunsetOpacity, nightOpacity));
-  const sunsetCloudOpacity = Math.max(0, sunsetOpacity * (1 - nightOpacity));
 
   document.documentElement.style.setProperty("--sunset-opacity", sunsetOpacity.toFixed(4));
   document.documentElement.style.setProperty("--night-opacity", nightOpacity.toFixed(4));
-  document.documentElement.style.setProperty("--day-cloud-opacity", dayCloudOpacity.toFixed(4));
-  document.documentElement.style.setProperty("--sunset-cloud-opacity", sunsetCloudOpacity.toFixed(4));
 }
 
 function snapSceneVisualState(callback) {
