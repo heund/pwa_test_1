@@ -1,12 +1,12 @@
-const CACHE_NAME = "jeju-map-prototype-v6";
+const CACHE_NAME = "jeju-map-prototype-v7";
 const ASSETS = [
   "./",
   "./map-image.html",
+  "./map-image-test.html",
   "./styles.css",
   "./scripts/map-image.js",
   "./scripts/services/jeju-solar.js",
-  "./manifest.webmanifest",
-  "./map-reference-breakdown.md"
+  "./manifest.webmanifest"
 ];
 
 self.addEventListener("install", (event) => {

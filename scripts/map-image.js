@@ -38,6 +38,19 @@ const cloudAssets = [
   }
 ];
 
+const TEST_SCENE_STATES = {
+  day: {
+    phase: "day",
+    label: "DAY",
+    simulatedNow: "2026-04-23T14:00:00+09:00"
+  },
+  night: {
+    phase: "night",
+    label: "NIGHT",
+    simulatedNow: "2026-04-23T22:00:00+09:00"
+  }
+};
+
 let mapStage;
 let mapImagePrimary;
 let mapImageSecondary;
@@ -50,17 +63,49 @@ let cloudTimers = [];
 let bottomCloudTimers = [];
 let cloudResizeFrame = 0;
 let sceneRefreshTimer = 0;
+let lifecycleSyncTimer = 0;
 let isAudioStarting = false;
 let hasStartedAudio = false;
 let loadingProgress = 0;
+let loadingTargetProgress = 0;
+let loadingProgressFrame = 0;
+let loadingProgressLastTick = 0;
+let loadingCompletionWaiters = [];
 let currentScenePhase = null;
 let activeMapImage;
 let inactiveMapImage;
+let mapStateSyncPromise = null;
+const preloadedAssetPromises = new Map();
+let sceneTransitionToken = 0;
+let sceneCleanupTimer = 0;
+let testModePanel;
+let testModePhaseValue;
+let testModeTimeValue;
+let testModeBrowserTimeValue;
+let testModeNextTimeValue;
+let testModeCountdownValue;
+let testModeLogList;
+let testModeClockTimer = 0;
+let lastTestSceneState = null;
+let testScenePhase = "day";
 
 const cloudLanes = [0.02, 0.07, 0.11, 0.15];
 const bottomCloudLanes = [0.78, 0.84, 0.9, 0.95];
 const cloudMinGap = 110;
 const bottomCloudMinGap = 90;
+
+function isTestMode() {
+  return document.body?.dataset.sceneMode === "test-cycle";
+}
+
+function logSceneDebug(message, details) {
+  if (details === undefined) {
+    console.log(`[jeju-map] ${message}`);
+    return;
+  }
+
+  console.log(`[jeju-map] ${message}`, details);
+}
 
 function isStandaloneMode() {
   return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
@@ -143,6 +188,271 @@ function registerPwaShell() {
 function clearTimers(timerStore) {
   timerStore.forEach((timer) => window.clearTimeout(timer));
   timerStore.length = 0;
+}
+
+function clearSceneRefreshTimer() {
+  if (!sceneRefreshTimer) return;
+  window.clearTimeout(sceneRefreshTimer);
+  sceneRefreshTimer = 0;
+}
+
+function clearSceneCleanupTimer() {
+  if (!sceneCleanupTimer) return;
+  window.clearTimeout(sceneCleanupTimer);
+  sceneCleanupTimer = 0;
+}
+
+function flushLoadingWaiters() {
+  const remainingWaiters = [];
+
+  loadingCompletionWaiters.forEach(({ minProgress, resolve }) => {
+    if (loadingProgress >= minProgress) {
+      resolve();
+      return;
+    }
+
+    remainingWaiters.push({ minProgress, resolve });
+  });
+
+  loadingCompletionWaiters = remainingWaiters;
+}
+
+function renderLoadingProgress() {
+  if (loadingBarFill) {
+    loadingBarFill.style.transform = `scaleX(${loadingProgress})`;
+  }
+  flushLoadingWaiters();
+}
+
+function tickLoadingProgress(timestamp) {
+  if (!loadingProgressLastTick) {
+    loadingProgressLastTick = timestamp;
+  }
+
+  const deltaMs = Math.max(timestamp - loadingProgressLastTick, 16);
+  loadingProgressLastTick = timestamp;
+
+  const isCompleting = loadingTargetProgress >= 1;
+  const speedPerMs = isCompleting ? 0.0022 : 0.00023;
+  const nextStep = deltaMs * speedPerMs;
+  const remaining = loadingTargetProgress - loadingProgress;
+
+  if (Math.abs(remaining) <= nextStep) {
+    loadingProgress = loadingTargetProgress;
+    loadingProgressFrame = 0;
+    loadingProgressLastTick = 0;
+    renderLoadingProgress();
+    return;
+  }
+
+  loadingProgress += Math.sign(remaining) * nextStep;
+  renderLoadingProgress();
+  loadingProgressFrame = window.requestAnimationFrame(tickLoadingProgress);
+}
+
+function waitForLoadingProgress(minProgress = 1) {
+  if (loadingProgress >= minProgress) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    loadingCompletionWaiters.push({ minProgress, resolve });
+  });
+}
+
+function getSceneTransitionDurationMs() {
+  const duration = getComputedStyle(document.documentElement).getPropertyValue("--scene-transition-duration").trim();
+
+  if (!duration) {
+    return 10000;
+  }
+
+  if (duration.endsWith("ms")) {
+    return Number.parseFloat(duration) || 10000;
+  }
+
+  if (duration.endsWith("s")) {
+    return (Number.parseFloat(duration) || 10) * 1000;
+  }
+
+  return 10000;
+}
+
+function formatClockTime(value, timeZone = "Asia/Seoul") {
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  }).format(value);
+}
+
+function pushTestModeLog(message) {
+  if (!isTestMode()) return;
+
+  ensureTestModePanel();
+
+  const timestamp = formatClockTime(new Date(), "Asia/Seoul");
+  const entry = `[${timestamp}] ${message}`;
+  console.log(`[map-test] ${entry}`);
+
+  if (!testModeLogList) return;
+
+  const item = document.createElement("li");
+  item.textContent = entry;
+  testModeLogList.prepend(item);
+
+  while (testModeLogList.children.length > 8) {
+    testModeLogList.removeChild(testModeLogList.lastElementChild);
+  }
+}
+
+function logTestImageState(label, image) {
+  if (!isTestMode() || !image) return;
+
+  const src = image.getAttribute("src") || "(none)";
+  const currentSrc = image.currentSrc || "(empty)";
+  const complete = image.complete ? "complete" : "pending";
+  const size = `${image.naturalWidth || 0}x${image.naturalHeight || 0}`;
+  pushTestModeLog(`${label}: src=${src} current=${currentSrc} ${complete} ${size}`);
+}
+
+function updateTestModeClock() {
+  if (!isTestMode() || !lastTestSceneState) return;
+
+  ensureTestModePanel();
+
+  if (testModeBrowserTimeValue) {
+    testModeBrowserTimeValue.textContent = formatClockTime(new Date(), "Asia/Seoul");
+  }
+
+  if (testModeTimeValue) {
+    const simulatedNow = lastTestSceneState?.testMode?.simulatedNow;
+    testModeTimeValue.textContent = simulatedNow ? formatClockTime(new Date(simulatedNow), "Asia/Seoul") : "-";
+  }
+
+  if (testModeNextTimeValue) {
+    const nextTransitionAt = lastTestSceneState?.nextTransitionAt;
+    testModeNextTimeValue.textContent = nextTransitionAt ? formatClockTime(new Date(nextTransitionAt), "Asia/Seoul") : "manual";
+  }
+
+  if (testModeCountdownValue) {
+    testModeCountdownValue.textContent = lastTestSceneState?.nextTransitionAt ? "active" : "paused";
+  }
+}
+
+function startTestModeClock() {
+  if (!isTestMode() || testModeClockTimer) return;
+
+  const tick = () => {
+    updateTestModeClock();
+    testModeClockTimer = window.setTimeout(tick, 1000);
+  };
+
+  updateTestModeClock();
+  testModeClockTimer = window.setTimeout(tick, 1000);
+}
+
+function getTestSceneState() {
+  const scene = TEST_SCENE_STATES[testScenePhase] || TEST_SCENE_STATES.day;
+
+  return {
+    phase: scene.phase,
+    nextTransitionAt: null,
+    testMode: {
+      label: scene.label,
+      simulatedNow: scene.simulatedNow
+    }
+  };
+}
+
+function setTestScenePhase(phase) {
+  if (!TEST_SCENE_STATES[phase]) {
+    return;
+  }
+
+  testScenePhase = phase;
+}
+
+function triggerTestScenePhase(phase) {
+  setTestScenePhase(phase);
+  pushTestModeLog(`Manual scene request: ${phase}`);
+  syncMapState();
+}
+
+function showTestSceneImmediately(phase) {
+  if (!TEST_SCENE_STATES[phase]) {
+    return;
+  }
+
+  setTestScenePhase(phase);
+  const sceneState = getTestSceneState();
+  pushTestModeLog(`Immediate scene apply: ${phase}`);
+  applySceneImmediately(sceneState.phase, { reveal: false });
+  updateTestModePanel(sceneState);
+}
+
+function ensureTestModePanel() {
+  if (!isTestMode() || testModePanel) return;
+
+  testModePanel = document.createElement("aside");
+  testModePanel.className = "test-mode-panel";
+  testModePanel.setAttribute("aria-live", "polite");
+  testModePanel.innerHTML = `
+    <strong class="test-mode-panel__title">Scene Test</strong>
+    <span class="test-mode-panel__row">Phase <b id="testModePhaseValue">-</b></span>
+    <span class="test-mode-panel__row">Browser time <b id="testModeBrowserTimeValue">-</b></span>
+    <span class="test-mode-panel__row">Jeju time <b id="testModeTimeValue">-</b></span>
+    <span class="test-mode-panel__row">Next change <b id="testModeNextTimeValue">-</b></span>
+    <span class="test-mode-panel__row">Countdown <b id="testModeCountdownValue">-</b></span>
+    <div class="test-mode-panel__actions">
+      <button class="test-mode-panel__button" id="testModeRunNightButton" type="button">Run Day to Night</button>
+      <button class="test-mode-panel__button" id="testModeRunDayButton" type="button">Run Night to Day</button>
+      <button class="test-mode-panel__button test-mode-panel__button--secondary" id="testModeShowNightButton" type="button">Show Night Direct</button>
+      <button class="test-mode-panel__button test-mode-panel__button--secondary" id="testModeShowDayButton" type="button">Show Day Direct</button>
+      <button class="test-mode-panel__button test-mode-panel__button--secondary" id="testModeResetDayButton" type="button">Reset to Day</button>
+    </div>
+    <span class="test-mode-panel__hint">Automatic test transitions paused</span>
+    <ul class="test-mode-panel__log" id="testModeLogList"></ul>
+  `;
+
+  document.body.append(testModePanel);
+  testModePhaseValue = document.getElementById("testModePhaseValue");
+  testModeBrowserTimeValue = document.getElementById("testModeBrowserTimeValue");
+  testModeTimeValue = document.getElementById("testModeTimeValue");
+  testModeNextTimeValue = document.getElementById("testModeNextTimeValue");
+  testModeCountdownValue = document.getElementById("testModeCountdownValue");
+  testModeLogList = document.getElementById("testModeLogList");
+  document.getElementById("testModeRunNightButton")?.addEventListener("click", () => {
+    triggerTestScenePhase("night");
+  });
+  document.getElementById("testModeRunDayButton")?.addEventListener("click", () => {
+    triggerTestScenePhase("day");
+  });
+  document.getElementById("testModeShowNightButton")?.addEventListener("click", () => {
+    showTestSceneImmediately("night");
+  });
+  document.getElementById("testModeShowDayButton")?.addEventListener("click", () => {
+    showTestSceneImmediately("day");
+  });
+  document.getElementById("testModeResetDayButton")?.addEventListener("click", () => {
+    showTestSceneImmediately("day");
+  });
+}
+
+function updateTestModePanel(sceneState) {
+  if (!isTestMode()) return;
+
+  ensureTestModePanel();
+  lastTestSceneState = sceneState;
+
+  if (testModePhaseValue) {
+    testModePhaseValue.textContent = sceneState?.testMode?.label || sceneState?.phase || "-";
+  }
+
+  updateTestModeClock();
+  startTestModeClock();
 }
 
 function getActiveCloudRects(layer) {
@@ -421,24 +731,29 @@ function resetSceneClasses() {
 }
 
 function setLoadingProgress(value) {
-  loadingProgress = Math.max(0, Math.min(value, 1));
-  if (loadingBarFill) {
-    loadingBarFill.style.transform = `scaleX(${loadingProgress})`;
+  loadingTargetProgress = Math.max(loadingProgress, Math.min(value, 1));
+
+  if (loadingProgressFrame) {
+    return;
   }
+
+  loadingProgressFrame = window.requestAnimationFrame(tickLoadingProgress);
 }
 
 function markSceneReady() {
   setLoadingProgress(1);
-  document.body.classList.remove("scene-loading");
-  document.body.classList.add("scene-ready");
-  window.setTimeout(() => {
-    document.body.classList.add("scene-live");
-  }, 0);
-  if (loadingScreen) {
+  waitForLoadingProgress(0.995).then(() => {
+    document.body.classList.remove("scene-loading");
+    document.body.classList.add("scene-ready");
     window.setTimeout(() => {
-      loadingScreen.classList.add("is-hidden");
-    }, 40);
-  }
+      document.body.classList.add("scene-live");
+    }, 0);
+    if (loadingScreen) {
+      window.setTimeout(() => {
+        loadingScreen.classList.add("is-hidden");
+      }, 120);
+    }
+  });
 }
 
 function setScenePhase(phase) {
@@ -482,14 +797,24 @@ async function preloadStartupAssets() {
   const cloudUrls = cloudAssets.flatMap((asset) => [asset.base, asset.sunset, asset.night]).filter(Boolean);
   const uniqueCloudUrls = Array.from(new Set([...mapUrls, ...cloudUrls]));
 
-  const assetPromises = uniqueCloudUrls.map((src) => {
+  const assetPromises = uniqueCloudUrls.map((src) => ensureAssetReady(src));
+
+  await Promise.all(assetPromises);
+}
+
+function ensureAssetReady(src) {
+  if (!src) {
+    return Promise.resolve();
+  }
+
+  if (!preloadedAssetPromises.has(src)) {
     const image = new Image();
     image.decoding = "async";
     image.src = src;
-    return waitForImageElement(image);
-  });
+    preloadedAssetPromises.set(src, waitForImageElement(image));
+  }
 
-  await Promise.all(assetPromises);
+  return preloadedAssetPromises.get(src);
 }
 
 function setMapImageSource(image, src) {
@@ -521,6 +846,8 @@ function syncCloudPhase(phase) {
 function applySceneImmediately(phase, options = {}) {
   const { reveal = true } = options;
   const targetSrc = getMapImageForPhase(phase);
+  sceneTransitionToken += 1;
+  clearSceneCleanupTimer();
 
   if (mapStage) {
     mapStage.classList.remove("is-transitioning");
@@ -537,94 +864,273 @@ function applySceneImmediately(phase, options = {}) {
   }
 }
 
-function transitionScene(phase) {
+async function transitionScene(phase) {
   const targetSrc = getMapImageForPhase(phase);
+  clearSceneCleanupTimer();
+  const transitionToken = ++sceneTransitionToken;
+  const cleanupDelay = getSceneTransitionDurationMs() + 100;
 
   if (!activeMapImage || !inactiveMapImage || currentScenePhase === phase) {
     applySceneImmediately(phase, { reveal: false });
     return;
   }
 
+  await ensureAssetReady(targetSrc);
+
+  if (isTestMode()) {
+    pushTestModeLog(`Asset preload confirmed for ${phase}: ${targetSrc}`);
+  }
+
+  if (transitionToken !== sceneTransitionToken) {
+    return;
+  }
+
   syncCloudPhase(phase);
   setMapImageSource(inactiveMapImage, targetSrc);
+  logTestImageState("inactive before wait", inactiveMapImage);
+  await waitForImageElement(inactiveMapImage);
+  logTestImageState("inactive after wait", inactiveMapImage);
+
+  if (transitionToken !== sceneTransitionToken) {
+    return;
+  }
 
   if (mapStage) {
     mapStage.classList.add("is-transitioning");
   }
 
+  const outgoingImage = activeMapImage;
+  const incomingImage = inactiveMapImage;
+
   inactiveMapImage.classList.add("is-visible");
+  logTestImageState("inactive made visible", incomingImage);
+  logTestImageState("active before fade out", outgoingImage);
 
   window.requestAnimationFrame(() => {
-    activeMapImage.classList.remove("is-visible");
+    outgoingImage.classList.remove("is-visible");
+    logTestImageState("active after fade out start", outgoingImage);
   });
 
-  const previousActive = activeMapImage;
-  activeMapImage = inactiveMapImage;
-  inactiveMapImage = previousActive;
+  activeMapImage = incomingImage;
+  inactiveMapImage = outgoingImage;
   currentScenePhase = phase;
 
-  window.setTimeout(() => {
+  sceneCleanupTimer = window.setTimeout(() => {
+    if (transitionToken !== sceneTransitionToken) {
+      return;
+    }
+
+    sceneCleanupTimer = 0;
     if (mapStage) {
       mapStage.classList.remove("is-transitioning");
     }
-    inactiveMapImage.classList.remove("is-visible");
-    setMapImageSource(inactiveMapImage, "");
-  }, 10100);
+    logTestImageState("inactive cleanup target", outgoingImage);
+    outgoingImage.classList.remove("is-visible");
+    setMapImageSource(outgoingImage, "");
+  }, cleanupDelay);
 }
 
 function scheduleSceneRefresh(nextTransitionAt) {
-  window.clearTimeout(sceneRefreshTimer);
-
-  const delay = getNextRefreshDelay(nextTransitionAt);
-
-  if (typeof delay !== "number") {
+  clearSceneRefreshTimer();
+  if (isTestMode()) {
+    pushTestModeLog("Automatic scheduling paused in manual test mode");
     return;
   }
 
+  const delay = isTestMode()
+    ? Math.max(new Date(nextTransitionAt).getTime() - Date.now(), 0)
+    : getNextRefreshDelay(nextTransitionAt);
+
+  if (typeof delay !== "number") {
+    logSceneDebug("No next refresh scheduled", {
+      nextTransitionAt: nextTransitionAt || null
+    });
+    return;
+  }
+
+  logSceneDebug("Scheduled next scene refresh", {
+    nextTransitionAt,
+    delayMs: delay
+  });
+
   sceneRefreshTimer = window.setTimeout(() => {
-    applyJejuSceneTiming({ initial: false });
+    sceneRefreshTimer = 0;
+    logSceneDebug("Scheduled scene refresh fired", {
+      firedAt: new Date().toISOString()
+    });
+    syncMapState();
   }, delay);
 }
 
-async function applyJejuSceneTiming(options = {}) {
-  const { initial = false } = options;
-  if (initial) {
-    setLoadingProgress(0.35);
+async function getInitialSceneState() {
+  if (isTestMode()) {
+    return getTestSceneState();
   }
 
   const cachedSceneState = getCachedJejuSceneState();
+  logSceneDebug("Initial scene sync started", {
+    now: new Date().toISOString(),
+    cachedPhase: cachedSceneState?.phase || null,
+    cachedNextTransitionAt: cachedSceneState?.nextTransitionAt || null
+  });
 
   try {
     const sceneState = await getJejuSceneState();
     if (!hasRenderableSceneState(sceneState)) {
       throw new Error("Missing required scene state");
     }
-
-    if (initial) {
-      setLoadingProgress(0.7);
-      await preloadStartupAssets();
-      setLoadingProgress(0.92);
-      applySceneImmediately(sceneState.phase, { reveal: true });
-    } else {
-      transitionScene(sceneState.phase);
-    }
-
-    scheduleSceneRefresh(sceneState.nextTransitionAt);
+    logSceneDebug("Fetched Jeju solar scene state", sceneState);
+    return sceneState;
   } catch {
-    if (initial) {
-      setLoadingProgress(0.92);
-    }
+    logSceneDebug("Initial solar fetch failed; falling back to cached scene if available", {
+      cachedPhase: cachedSceneState?.phase || null,
+      cachedNextTransitionAt: cachedSceneState?.nextTransitionAt || null
+    });
     if (hasRenderableSceneState(cachedSceneState)) {
-      if (initial) {
-        await preloadStartupAssets();
-        applySceneImmediately(cachedSceneState.phase, { reveal: true });
-      } else {
-        transitionScene(cachedSceneState.phase);
-      }
-      scheduleSceneRefresh(cachedSceneState.nextTransitionAt);
-      return;
+      return cachedSceneState;
     }
+    throw new Error("Unable to resolve initial scene state");
   }
+}
+
+async function getRuntimeSceneState() {
+  if (isTestMode()) {
+    return getTestSceneState();
+  }
+
+  const cachedSceneState = getCachedJejuSceneState();
+  logSceneDebug("Runtime scene sync started", {
+    now: new Date().toISOString(),
+    cachedPhase: cachedSceneState?.phase || null,
+    cachedNextTransitionAt: cachedSceneState?.nextTransitionAt || null
+  });
+
+  if (
+    hasRenderableSceneState(cachedSceneState) &&
+    (cachedSceneState.nextTransitionAt || cachedSceneState.phase !== "night")
+  ) {
+    logSceneDebug("Using cached Jeju solar scene state", cachedSceneState);
+    return cachedSceneState;
+  }
+
+  const sceneState = await getJejuSceneState();
+  if (!hasRenderableSceneState(sceneState)) {
+    throw new Error("Missing required runtime scene state");
+  }
+
+  logSceneDebug("Fetched fresh Jeju solar scene state", sceneState);
+  return sceneState;
+}
+
+function applyRuntimeSceneState(sceneState) {
+  if (!hasRenderableSceneState(sceneState)) {
+    return;
+  }
+
+  if (currentScenePhase === null) {
+    applySceneImmediately(sceneState.phase, { reveal: false });
+    return;
+  }
+
+  if (currentScenePhase !== sceneState.phase) {
+    if (isTestMode()) {
+      pushTestModeLog(`Applying scene transition: ${currentScenePhase || "none"} -> ${sceneState.phase}`);
+    }
+    logSceneDebug("Applying scene transition", {
+      from: currentScenePhase,
+      to: sceneState.phase
+    });
+    void transitionScene(sceneState.phase);
+    return;
+  }
+
+  if (isTestMode()) {
+    pushTestModeLog(`Scene already correct: ${sceneState.phase}`);
+  }
+  logSceneDebug("Scene already correct", {
+    phase: sceneState.phase
+  });
+  syncCloudPhase(sceneState.phase);
+}
+
+function syncMapState(options = {}) {
+  const { initial = false } = options;
+
+  if (mapStateSyncPromise) {
+    return mapStateSyncPromise;
+  }
+
+  mapStateSyncPromise = (async () => {
+    clearSceneRefreshTimer();
+
+    if (initial) {
+      setLoadingProgress(0.35);
+    }
+
+    try {
+      const sceneState = initial
+        ? await getInitialSceneState()
+        : await getRuntimeSceneState();
+
+      if (isTestMode()) {
+        pushTestModeLog(`syncMapState resolved phase "${sceneState.phase}"`);
+      }
+      logSceneDebug("syncMapState resolved scene", {
+        initial,
+        phase: sceneState.phase,
+        nextTransitionAt: sceneState.nextTransitionAt || null
+      });
+
+      if (initial) {
+        setLoadingProgress(0.7);
+        await preloadStartupAssets();
+        setLoadingProgress(0.92);
+        applySceneImmediately(sceneState.phase, { reveal: true });
+      } else {
+        applyRuntimeSceneState(sceneState);
+      }
+
+      updateTestModePanel(sceneState);
+      scheduleSceneRefresh(sceneState.nextTransitionAt);
+    } catch {
+      if (initial) {
+        setLoadingProgress(0.92);
+      }
+    }
+  })().finally(() => {
+    mapStateSyncPromise = null;
+  });
+
+  return mapStateSyncPromise;
+}
+
+function requestMapStateSync() {
+  if (lifecycleSyncTimer) {
+    return;
+  }
+
+  // Background tabs can throttle timers for long periods, so resync on resume.
+  lifecycleSyncTimer = window.setTimeout(() => {
+    lifecycleSyncTimer = 0;
+    if (isTestMode()) {
+      pushTestModeLog("Lifecycle resync requested");
+    }
+    logSceneDebug("Lifecycle resync requested", {
+      at: new Date().toISOString()
+    });
+    syncMapState();
+  }, 0);
+}
+
+function registerMapStateLifecycleSync() {
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      requestMapStateSync();
+    }
+  });
+
+  window.addEventListener("pageshow", requestMapStateSync);
+  window.addEventListener("focus", requestMapStateSync);
 }
 
 function registerServiceWorker() {
@@ -646,12 +1152,30 @@ function init() {
   loadingScreen = document.getElementById("loadingScreen");
   loadingBarFill = document.getElementById("loadingBarFill");
 
+  if (isTestMode()) {
+    ensureTestModePanel();
+    pushTestModeLog("Test mode initialized");
+  }
+
+  [mapImagePrimary, mapImageSecondary].forEach((image, index) => {
+    if (!image) return;
+
+    image.addEventListener("load", () => {
+      logTestImageState(`img${index + 1} load`, image);
+    });
+
+    image.addEventListener("error", () => {
+      logTestImageState(`img${index + 1} error`, image);
+    });
+  });
+
   setLoadingProgress(0.12);
   registerPwaShell();
   registerAudioStart();
   createClouds();
   setLoadingProgress(0.28);
-  applyJejuSceneTiming({ initial: true });
+  syncMapState({ initial: true });
+  registerMapStateLifecycleSync();
   registerServiceWorker();
 
   window.addEventListener("resize", () => {
