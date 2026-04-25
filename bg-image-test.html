@@ -173,8 +173,8 @@
       position: fixed;
       left: max(16px, env(safe-area-inset-left));
       right: max(16px, env(safe-area-inset-right));
-      bottom: max(16px, env(safe-area-inset-bottom));
-      z-index: 5;
+      top: max(16px, env(safe-area-inset-top));
+      z-index: 8;
       display: flex;
       align-items: center;
       flex-wrap: wrap;
@@ -508,12 +508,12 @@
     let isSoundOn = false;
     let activeTarget = "light";
     const glowPosition = {
-      xPercent: 50.01,
-      yPercent: 62.40
+      xPercent: 49.96,
+      yPercent: 53.37
     };
     const lanternPosition = {
-      xPercent: 49.62,
-      yPercent: 62.05
+      xPercent: 49.96,
+      yPercent: 53.22
     };
 
     function updateViewportHeight() {
