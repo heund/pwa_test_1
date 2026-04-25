@@ -19,6 +19,14 @@
     body {
       overflow: hidden;
       background: #0f1010;
+      --hud-margin: 20px;
+      --level-size: clamp(64px, 17vw, 76px);
+      --secondary-menu-height: 40px;
+      --hud-gold: #b79d5f;
+      --secondary-menu-lantern-reserve: calc(var(--level-size) * 0.54);
+      --secondary-menu-start-padding: 8px;
+      --secondary-menu-end-padding: 28px;
+      --secondary-menu-width: 345px;
     }
 
     .image-stage {
@@ -229,15 +237,26 @@
       cursor: pointer;
     }
 
-    .level-indicator {
+    .bottom-hud {
       position: fixed;
-      left: calc(env(safe-area-inset-left, 0px) + 20px);
-      bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+      left: calc(env(safe-area-inset-left, 0px) + var(--hud-margin));
+      bottom: calc(env(safe-area-inset-bottom, 0px) + var(--hud-margin));
       z-index: 6;
-      width: clamp(64px, 17vw, 76px);
-      height: clamp(64px, 17vw, 76px);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      max-width: calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - var(--hud-margin) * 2);
+    }
+
+    .level-indicator {
+      position: relative;
+      z-index: 2;
+      flex: 0 0 auto;
+      width: var(--level-size);
+      height: var(--level-size);
       --level-progress: 68;
       --level-ring-size: 201.06;
+      filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.2));
     }
 
     .level-indicator__ring {
@@ -259,15 +278,15 @@
     }
 
     .level-indicator__track {
-      stroke: rgba(255, 246, 207, 0.22);
+      stroke: rgba(183, 157, 95, 0.24);
     }
 
     .level-indicator__progress {
-      stroke: rgba(255, 229, 126, 0.92);
+      stroke: rgba(183, 157, 95, 0.96);
       stroke-linecap: round;
       stroke-dasharray: var(--level-ring-size);
       stroke-dashoffset: calc(var(--level-ring-size) * (1 - var(--level-progress) / 100));
-      filter: drop-shadow(0 0 6px rgba(255, 213, 92, 0.72));
+      filter: drop-shadow(0 0 6px rgba(183, 157, 95, 0.64));
     }
 
     .level-indicator__icon {
@@ -283,6 +302,108 @@
       pointer-events: none;
       -webkit-user-drag: none;
     }
+
+    .secondary-menu {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 0;
+      flex: 0 0 auto;
+      width: min(var(--secondary-menu-width), calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - var(--hud-margin) * 2));
+      height: var(--secondary-menu-height);
+      margin-left: calc(var(--level-size) * -0.54 - 10px);
+      padding: 0 var(--secondary-menu-end-padding) 0 calc(var(--secondary-menu-lantern-reserve) + var(--secondary-menu-start-padding));
+      border: 1px solid rgba(183, 157, 95, 0.58);
+      border-radius: 7px;
+      background:
+        linear-gradient(180deg, rgba(67, 68, 58, 0.48), rgba(35, 37, 32, 0.6)),
+        rgba(51, 52, 44, 0.54);
+      backdrop-filter: blur(12px) saturate(1.08);
+      -webkit-backdrop-filter: blur(12px) saturate(1.08);
+      box-shadow:
+        0 8px 18px rgba(0, 0, 0, 0.18),
+        0 0 10px rgba(183, 157, 95, 0.1),
+        inset 0 1px 0 rgba(255, 232, 164, 0.1),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.24);
+    }
+
+    .secondary-menu__button {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      flex: 0 0 auto;
+      width: auto;
+      height: 100%;
+      padding: 0 13px;
+      border: 0;
+      color: #e2ca86;
+      background: transparent;
+      cursor: pointer;
+      font-family: "Noto Serif KR", "Apple SD Gothic Neo", serif;
+      font-size: 12.5px;
+      font-weight: 800;
+      line-height: 1;
+      white-space: nowrap;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.68);
+    }
+
+    .secondary-menu__button + .secondary-menu__button::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 7px;
+      bottom: 7px;
+      width: 1px;
+      background: rgba(183, 157, 95, 0.34);
+      box-shadow: 1px 0 0 rgba(0, 0, 0, 0.18);
+    }
+
+    .secondary-menu__icon {
+      display: block;
+      width: 26px;
+      height: 26px;
+      object-fit: contain;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.58));
+      user-select: none;
+      pointer-events: none;
+      -webkit-user-drag: none;
+    }
+
+    .secondary-menu__label {
+      display: block;
+      transform: translateY(-0.5px);
+    }
+
+    .sound-toggle {
+      position: fixed;
+      top: calc(env(safe-area-inset-top, 0px) + 22px);
+      right: calc(env(safe-area-inset-right, 0px) + 22px);
+      z-index: 6;
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .sound-toggle__icon {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.42));
+      user-select: none;
+      pointer-events: none;
+      -webkit-user-drag: none;
+    }
+
   </style>
 </head>
 <body>
@@ -294,13 +415,32 @@
     </div>
     <div class="glow-light" id="glowLight" aria-hidden="true"></div>
   </main>
-  <div class="level-indicator" aria-label="Level progress">
-    <svg class="level-indicator__ring" viewBox="0 0 72 72" aria-hidden="true">
-      <circle class="level-indicator__track" cx="36" cy="36" r="32"></circle>
-      <circle class="level-indicator__progress" cx="36" cy="36" r="32"></circle>
-    </svg>
-    <img class="level-indicator__icon" src="images/lantern/lantern_icon.svg" alt="">
+  <div class="bottom-hud" aria-label="Bottom navigation">
+    <div class="level-indicator" aria-label="Level progress">
+      <svg class="level-indicator__ring" viewBox="0 0 72 72" aria-hidden="true">
+        <circle class="level-indicator__track" cx="36" cy="36" r="32"></circle>
+        <circle class="level-indicator__progress" cx="36" cy="36" r="32"></circle>
+      </svg>
+      <img class="level-indicator__icon" src="images/lantern/lantern_icon.svg" alt="">
+    </div>
+    <nav class="secondary-menu" aria-label="Secondary navigation">
+      <button class="secondary-menu__button" type="button" aria-label="Map">
+        <img class="secondary-menu__icon" src="images/icons/icon_map.svg" alt="">
+        <span class="secondary-menu__label">지도</span>
+      </button>
+      <button class="secondary-menu__button" type="button" aria-label="Deity">
+        <img class="secondary-menu__icon" src="images/icons/icon_deity.svg" alt="">
+        <span class="secondary-menu__label">만난 신</span>
+      </button>
+      <button class="secondary-menu__button" type="button" aria-label="Help">
+        <img class="secondary-menu__icon" src="images/icons/icon_help.svg" alt="">
+        <span class="secondary-menu__label">도움말</span>
+      </button>
+    </nav>
   </div>
+  <button class="sound-toggle" id="soundToggle" type="button" aria-label="Sound off" aria-pressed="false">
+    <img class="sound-toggle__icon" id="soundToggleIcon" src="images/icons/icon_sound_off.svg" alt="">
+  </button>
   <aside class="position-panel" aria-live="polite" hidden>
     <div class="position-panel__modes">
       <button class="position-panel__mode is-active" id="moveLightButton" type="button">Move light</button>
@@ -318,7 +458,14 @@
     const copyPositionButton = document.getElementById("copyPositionButton");
     const moveLightButton = document.getElementById("moveLightButton");
     const moveLanternButton = document.getElementById("moveLanternButton");
+    const soundToggle = document.getElementById("soundToggle");
+    const soundToggleIcon = document.getElementById("soundToggleIcon");
     const calibrationEnabled = false;
+    const soundIcons = {
+      off: "images/icons/icon_sound_off.svg",
+      on: "images/icons/icon_sound_on.svg"
+    };
+    let isSoundOn = false;
     let activeTarget = "light";
     const glowPosition = {
       xPercent: 50.01,
@@ -450,6 +597,19 @@
       }
     }
 
+    function updateSoundToggle() {
+      if (!soundToggle || !soundToggleIcon) return;
+
+      soundToggleIcon.src = isSoundOn ? soundIcons.on : soundIcons.off;
+      soundToggle.setAttribute("aria-pressed", String(isSoundOn));
+      soundToggle.setAttribute("aria-label", isSoundOn ? "Sound on" : "Sound off");
+    }
+
+    function toggleSound() {
+      isSoundOn = !isSoundOn;
+      updateSoundToggle();
+    }
+
     updateViewportHeight();
 
     if (window.visualViewport) {
@@ -475,6 +635,8 @@
       moveLanternButton.addEventListener("click", () => setActiveTarget("lantern"));
       copyPositionButton.addEventListener("click", copyPosition);
     }
+
+    soundToggle?.addEventListener("click", toggleSound);
   </script>
 </body>
 </html>
